@@ -3,22 +3,21 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/dummy_data/salama_data.dart';
-import '../../../data/models/child_model.dart';
+import '../../../data/models/worker_model.dart';
 
-void showScanQrSheet(BuildContext context, {ChildModel? child}) {
+void showScanQrSheet(BuildContext context, WorkerModel? worker) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.5),
-    builder: (_) => _ScanQrSheet(child: child ?? SalamaData.children.first),
+    builder: (_) => _ScanQrSheet(worker: worker),
   );
 }
 
 class _ScanQrSheet extends StatelessWidget {
-  final ChildModel child;
-  const _ScanQrSheet({required this.child});
+  final WorkerModel? worker;
+  const _ScanQrSheet({required this.worker});
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +34,6 @@ class _ScanQrSheet extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Grabber
             Container(
               margin: const EdgeInsets.only(top: 8, bottom: 2),
               width: 36,
@@ -45,7 +43,6 @@ class _ScanQrSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
               ),
             ),
-            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(
                   AppDimensions.spaceMD, 6, AppDimensions.spaceSM, 8),
@@ -66,8 +63,8 @@ class _ScanQrSheet extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Child QR Code', style: AppTextStyles.h3),
-                        Text('Scan to access immunization record',
+                        Text('My QR Code', style: AppTextStyles.h3),
+                        Text('Show this to identify yourself',
                             style: AppTextStyles.captionMuted),
                       ],
                     ),
@@ -97,7 +94,7 @@ class _ScanQrSheet extends StatelessWidget {
                 padding: const EdgeInsets.all(AppDimensions.spaceMD),
                 shrinkWrap: true,
                 children: [
-                  _IdentityQrCard(child: child),
+                  _IdentityQrCard(worker: worker),
                   const SizedBox(height: AppDimensions.spaceSM),
                   Row(
                     children: const [
@@ -115,20 +112,6 @@ class _ScanQrSheet extends StatelessWidget {
                               icon: Icons.print_outlined, label: 'Print')),
                     ],
                   ),
-                  const SizedBox(height: AppDimensions.spaceSM),
-                  const _QuickAction(
-                    icon: Icons.vaccines_outlined,
-                    iconColor: AppColors.warningMid,
-                    title: 'View vaccination record',
-                    subtitle: 'See all vaccines and doses',
-                  ),
-                  const SizedBox(height: 6),
-                  const _QuickAction(
-                    icon: Icons.add_moderator_outlined,
-                    iconColor: AppColors.info,
-                    title: 'Record new vaccination',
-                    subtitle: 'Add a new vaccine dose',
-                  ),
                 ],
               ),
             ),
@@ -139,13 +122,16 @@ class _ScanQrSheet extends StatelessWidget {
   }
 }
 
-// ── Identity + QR card ───────────────────────────────────────────────────
+// ── Identity + QR card ───────────────────────────────────────────────────────
 class _IdentityQrCard extends StatelessWidget {
-  final ChildModel child;
-  const _IdentityQrCard({required this.child});
+  final WorkerModel? worker;
+  const _IdentityQrCard({required this.worker});
 
   @override
   Widget build(BuildContext context) {
+    final name = worker?.name ?? '—';
+    final role = worker?.role ?? '';
+    final id = worker?.workerId ?? '—';
     return Container(
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
@@ -154,7 +140,6 @@ class _IdentityQrCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Identity
           Container(
             padding: const EdgeInsets.all(AppDimensions.cardPaddingSm),
             decoration: BoxDecoration(
@@ -171,7 +156,7 @@ class _IdentityQrCard extends StatelessWidget {
                     color: AppColors.primary.withValues(alpha: 0.13),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.child_care_rounded,
+                  child: const Icon(Icons.person_rounded,
                       color: AppColors.primary, size: 21),
                 ),
                 const SizedBox(width: 10),
@@ -179,20 +164,17 @@ class _IdentityQrCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(child.name, style: AppTextStyles.h3),
-                      Text(
-                        '${child.gender} • ${child.ageLabel} • Born ${child.bornDate}',
-                        style: AppTextStyles.captionMuted,
-                      ),
+                      Text(name, style: AppTextStyles.h3),
+                      Text(role, style: AppTextStyles.captionMuted),
                     ],
                   ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('Record ID', style: AppTextStyles.captionMuted),
+                    Text('Worker ID', style: AppTextStyles.captionMuted),
                     Text(
-                      child.id,
+                      id,
                       style: AppTextStyles.h4.copyWith(
                         color: AppColors.primary,
                         fontWeight: FontWeight.w800,
@@ -205,46 +187,17 @@ class _IdentityQrCard extends StatelessWidget {
           ),
           const Divider(
               height: 1, thickness: 1, color: AppColors.borderLight),
-          // QR
           Padding(
             padding: const EdgeInsets.all(AppDimensions.spaceMD),
             child: Column(
               children: [
                 Text(
-                  'Show this QR to any health worker to view history.',
+                  'Show this QR to identify yourself at a facility.',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.captionMuted,
                 ),
                 const SizedBox(height: 10),
-                _QrWithBrackets(data: 'SALAMA:${child.id}'),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySurface.withValues(alpha: 0.6),
-                    borderRadius:
-                        BorderRadius.circular(AppDimensions.radiusSM),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.lock_outline_rounded,
-                          size: 13, color: AppColors.primary),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'Contains a secure identifier only. '
-                          'Personal data is protected.',
-                          style: AppTextStyles.caption.copyWith(
-                            fontSize: 10,
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _QrWithBrackets(data: 'SALAMA-CHW:$id'),
               ],
             ),
           ),
@@ -334,57 +287,6 @@ class _MiniAction extends StatelessWidget {
                 color: AppColors.primary,
                 fontWeight: FontWeight.w700,
               )),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickAction extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-
-  const _QuickAction({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppDimensions.cardPaddingSm),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
-        border: Border.all(color: AppColors.borderLight, width: 1),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
-            ),
-            child: Icon(icon, color: iconColor, size: 16),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppTextStyles.h4),
-                Text(subtitle, style: AppTextStyles.captionMuted),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded,
-              size: 18, color: AppColors.textTertiary),
         ],
       ),
     );

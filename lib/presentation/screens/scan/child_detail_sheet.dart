@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/child_model.dart';
+import '../../providers/data_providers.dart';
 import '../visits/visits_screen.dart' show priorityHue;
 import 'medical_history_sheet.dart';
 import 'record_vaccination_sheet.dart';
@@ -13,17 +15,20 @@ void showChildDetailSheet(BuildContext context, ChildModel child) {
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.5),
-    builder: (_) => _ChildDetailSheet(child: child),
+    builder: (_) => _ChildDetailSheet(passedChild: child),
   );
 }
 
-class _ChildDetailSheet extends StatelessWidget {
-  final ChildModel child;
-  const _ChildDetailSheet({required this.child});
+class _ChildDetailSheet extends ConsumerWidget {
+  final ChildModel passedChild;
+  const _ChildDetailSheet({required this.passedChild});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final mq = MediaQuery.of(context);
+    // Use the full detail (with vaccination history) once loaded.
+    final child =
+        ref.watch(childDetailProvider(passedChild.id)).valueOrNull ?? passedChild;
     final hue = priorityHue(child.riskBand);
     return Container(
       constraints: BoxConstraints(maxHeight: mq.size.height * 0.92),
@@ -60,7 +65,7 @@ class _ChildDetailSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(child.name, style: AppTextStyles.h3),
-                        Text('${child.id} • ${child.ageLabel}',
+                        Text('${child.code} • ${child.ageLabel}',
                             style: AppTextStyles.captionMuted),
                       ],
                     ),

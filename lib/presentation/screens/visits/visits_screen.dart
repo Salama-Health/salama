@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/dummy_data/salama_data.dart';
 import '../../../data/models/child_model.dart';
+import '../../providers/data_providers.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/brand_header.dart';
 import '../scan/child_detail_sheet.dart';
@@ -40,15 +41,15 @@ import 'route_plan_sheet.dart';
   };
 }
 
-class VisitsScreen extends StatefulWidget {
+class VisitsScreen extends ConsumerStatefulWidget {
   final ValueChanged<int> onNavigate;
   const VisitsScreen({super.key, required this.onNavigate});
 
   @override
-  State<VisitsScreen> createState() => _VisitsScreenState();
+  ConsumerState<VisitsScreen> createState() => _VisitsScreenState();
 }
 
-class _VisitsScreenState extends State<VisitsScreen> {
+class _VisitsScreenState extends ConsumerState<VisitsScreen> {
   int _tab = 0; // 0 To visit · 1 Visited · 2 All
   RiskBand? _priority; // null = all priorities
 
@@ -60,8 +61,8 @@ class _VisitsScreenState extends State<VisitsScreen> {
     (RiskBand.low, 'Routine'),
   ];
 
-  List<ChildModel> get _filtered {
-    var list = SalamaData.children.where((c) {
+  List<ChildModel> _filter(List<ChildModel> all) {
+    var list = all.where((c) {
       if (_tab == 0) return c.status == VisitStatus.toVisit;
       if (_tab == 1) return c.status == VisitStatus.visited;
       return true;
@@ -76,7 +77,19 @@ class _VisitsScreenState extends State<VisitsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
+    final childrenAsync = ref.watch(childrenProvider);
+    final all = childrenAsync.valueOrNull ?? const <ChildModel>[];
+    final list = _filter(all);
+
+    final toVisit =
+        all.where((c) => c.status == VisitStatus.toVisit).length;
+    final visited =
+        all.where((c) => c.status == VisitStatus.visited).length;
+    final highPriority = all
+        .where((c) =>
+            c.riskBand == RiskBand.high || c.riskBand == RiskBand.medium)
+        .length;
+
     return Column(
       children: [
         const SafeArea(
@@ -84,77 +97,100 @@ class _VisitsScreenState extends State<VisitsScreen> {
           child: BrandHeader(trailing: ConnectionPill()),
         ),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppDimensions.screenPadding,
-              AppDimensions.spaceMD,
-              AppDimensions.screenPadding,
-              AppDimensions.spaceXXL,
-            ),
-            children: [
-              _PriorityVisitsHeader(
-                tab: _tab,
-                onTab: (i) => setState(() => _tab = i),
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(childrenProvider);
+              await ref.read(childrenProvider.future);
+            },
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppDimensions.screenPadding,
+                AppDimensions.spaceMD,
+                AppDimensions.screenPadding,
+                AppDimensions.spaceXXL,
               ),
-              const SizedBox(height: AppDimensions.spaceSM),
-              _RouteActions(onOpen: () => showRoutePlanSheet(context)),
-              const SizedBox(height: AppDimensions.spaceMD),
-              Row(
-                children: [
-                  const Icon(Icons.filter_list_rounded,
-                      size: 15, color: AppColors.textSecondary),
-                  const SizedBox(width: 5),
-                  Text('Filter by priority',
-                      style: AppTextStyles.caption.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w700,
-                      )),
-                ],
-              ),
-              const SizedBox(height: 7),
-              SizedBox(
-                height: 30,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _priorityChips.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 6),
-                  itemBuilder: (context, i) {
-                    final chip = _priorityChips[i];
-                    final selected = _priority == chip.$1;
-                    return _FilterChip(
-                      label: chip.$2,
-                      band: chip.$1,
-                      selected: selected,
-                      onTap: () => setState(() => _priority = chip.$1),
-                    );
-                  },
+              children: [
+                _PriorityVisitsHeader(
+                  tab: _tab,
+                  total: all.length,
+                  toVisit: toVisit,
+                  visited: visited,
+                  highPriority: highPriority,
+                  onTab: (i) => setState(() => _tab = i),
                 ),
-              ),
-              const SizedBox(height: AppDimensions.spaceMD),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${list.length} ${list.length == 1 ? "child" : "children"}',
-                      style: AppTextStyles.h3,
-                    ),
+                const SizedBox(height: AppDimensions.spaceSM),
+                _RouteActions(onOpen: () => showRoutePlanSheet(context)),
+                const SizedBox(height: AppDimensions.spaceMD),
+                Row(
+                  children: [
+                    const Icon(Icons.filter_list_rounded,
+                        size: 15, color: AppColors.textSecondary),
+                    const SizedBox(width: 5),
+                    Text('Filter by priority',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w700,
+                        )),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                SizedBox(
+                  height: 30,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _priorityChips.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 6),
+                    itemBuilder: (context, i) {
+                      final chip = _priorityChips[i];
+                      final selected = _priority == chip.$1;
+                      return _FilterChip(
+                        label: chip.$2,
+                        band: chip.$1,
+                        selected: selected,
+                        onTap: () => setState(() => _priority = chip.$1),
+                      );
+                    },
                   ),
-                  Text('Sorted by priority',
-                      style: AppTextStyles.captionMuted),
-                ],
-              ),
-              const SizedBox(height: AppDimensions.spaceSM),
-              if (list.isEmpty)
-                _EmptyState()
-              else
-                ...list.map((c) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _ChildCard(
-                        child: c,
-                        onTap: () => showChildDetailSheet(context, c),
+                ),
+                const SizedBox(height: AppDimensions.spaceMD),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${list.length} ${list.length == 1 ? "child" : "children"}',
+                        style: AppTextStyles.h3,
                       ),
-                    )),
-            ],
+                    ),
+                    Text('Sorted by priority',
+                        style: AppTextStyles.captionMuted),
+                  ],
+                ),
+                const SizedBox(height: AppDimensions.spaceSM),
+                childrenAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (e, _) => _ErrorState(
+                      message: '$e',
+                      onRetry: () => ref.invalidate(childrenProvider)),
+                  data: (_) => list.isEmpty
+                      ? _EmptyState()
+                      : Column(
+                          children: list
+                              .map((c) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: _ChildCard(
+                                      child: c,
+                                      onTap: () =>
+                                          showChildDetailSheet(context, c),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -162,20 +198,30 @@ class _VisitsScreenState extends State<VisitsScreen> {
   }
 }
 
-// ── Priority visits header card ──────────────────────────────────────────
+// ── Priority visits header card ──────────────────────────────────────────────
 class _PriorityVisitsHeader extends StatelessWidget {
   final int tab;
+  final int total;
+  final int toVisit;
+  final int visited;
+  final int highPriority;
   final ValueChanged<int> onTab;
-  const _PriorityVisitsHeader({required this.tab, required this.onTab});
-
-  static const _tabs = [
-    ('To visit', 88),
-    ('Visited', 32),
-    ('All', 128),
-  ];
+  const _PriorityVisitsHeader({
+    required this.tab,
+    required this.total,
+    required this.toVisit,
+    required this.visited,
+    required this.highPriority,
+    required this.onTab,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final tabs = [
+      ('To visit', toVisit),
+      ('Visited', visited),
+      ('All', total),
+    ];
     return AppCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -214,7 +260,7 @@ class _PriorityVisitsHeader extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('128',
+                      Text('$total',
                           style: AppTextStyles.h2.copyWith(
                             color: AppColors.primary,
                             fontWeight: FontWeight.w800,
@@ -232,7 +278,7 @@ class _PriorityVisitsHeader extends StatelessWidget {
           ),
           // Tabs
           Row(
-            children: List.generate(_tabs.length, (i) {
+            children: List.generate(tabs.length, (i) {
               final active = tab == i;
               return Expanded(
                 child: GestureDetector(
@@ -243,7 +289,7 @@ class _PriorityVisitsHeader extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Text(
-                          '${_tabs[i].$1} (${_tabs[i].$2})',
+                          '${tabs[i].$1} (${tabs[i].$2})',
                           style: AppTextStyles.caption.copyWith(
                             color: active
                                 ? AppColors.primary
@@ -277,17 +323,17 @@ class _PriorityVisitsHeader extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.event_note_rounded,
-                    size: 14, color: AppColors.primary),
+                const Icon(Icons.outlined_flag_rounded,
+                    size: 14, color: AppColors.riskHigh),
                 const SizedBox(width: 6),
-                Text('18 days left in risk window',
+                Text('$highPriority high-priority children',
                     style: AppTextStyles.caption.copyWith(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w700,
                       fontSize: 11,
                     )),
                 const Spacer(),
-                Text('Updated today, 6:30 AM',
+                Text('Sorted by climate risk',
                     style: AppTextStyles.captionMuted.copyWith(fontSize: 10)),
               ],
             ),
@@ -298,7 +344,7 @@ class _PriorityVisitsHeader extends StatelessWidget {
   }
 }
 
-// ── Filter chip ──────────────────────────────────────────────────────────
+// ── Filter chip ──────────────────────────────────────────────────────────────
 class _FilterChip extends StatelessWidget {
   final String label;
   final RiskBand? band;
@@ -358,7 +404,7 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-// ── Child card ───────────────────────────────────────────────────────────
+// ── Child card ───────────────────────────────────────────────────────────────
 class _ChildCard extends StatelessWidget {
   final ChildModel child;
   final VoidCallback onTap;
@@ -395,7 +441,7 @@ class _ChildCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${child.name} • ${child.id}',
+                      Text('${child.name} • ${child.code}',
                           style: AppTextStyles.h4),
                       const SizedBox(height: 1),
                       Text('${child.ageLabel} • ${child.gender}',
@@ -514,7 +560,7 @@ class _VaccineTag extends StatelessWidget {
   }
 }
 
-// ── Empty state ──────────────────────────────────────────────────────────
+// ── Empty / error states ─────────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -537,7 +583,38 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ── Route actions ────────────────────────────────────────────────────────
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              size: 30, color: AppColors.textTertiary),
+          const SizedBox(height: 8),
+          Text('Couldn’t load children',
+              style: AppTextStyles.h4
+                  .copyWith(color: AppColors.textSecondary)),
+          const SizedBox(height: 2),
+          Text(message,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.captionMuted),
+          const SizedBox(height: 8),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Route actions ────────────────────────────────────────────────────────────
 class _RouteActions extends StatelessWidget {
   final VoidCallback onOpen;
   const _RouteActions({required this.onOpen});

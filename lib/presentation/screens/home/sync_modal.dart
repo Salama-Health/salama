@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/dummy_data/salama_data.dart';
+import '../../providers/core_providers.dart';
+import '../../providers/data_providers.dart';
 
 /// Small popup modal to approve a data sync.
 void showSyncModal(BuildContext context) {
@@ -17,12 +19,54 @@ void showSyncModal(BuildContext context) {
   );
 }
 
-class _SyncModal extends StatelessWidget {
+class _SyncModal extends ConsumerStatefulWidget {
   final bool isOnline;
   const _SyncModal({required this.isOnline});
 
   @override
+  ConsumerState<_SyncModal> createState() => _SyncModalState();
+}
+
+class _SyncModalState extends ConsumerState<_SyncModal> {
+  bool _syncing = false;
+
+  Future<void> _sync() async {
+    setState(() => _syncing = true);
+    try {
+      final result = await ref.read(syncRepositoryProvider).upload();
+      ref.invalidate(syncStatusProvider);
+      ref.invalidate(childrenProvider);
+      ref.invalidate(activityProvider);
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.totalSaved > 0
+              ? 'Synced ${result.totalSaved} record(s) successfully.'
+              : 'Everything is already up to date.'),
+          backgroundColor: AppColors.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _syncing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sync failed: $e'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isOnline = widget.isOnline;
+    final syncStatus = ref.watch(syncStatusProvider).valueOrNull;
+    final pending = syncStatus?.pendingRecords ?? 0;
+    final lastSync = syncStatus?.lastSyncLabel ?? '—';
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 36),
@@ -101,13 +145,13 @@ class _SyncModal extends StatelessWidget {
                   _Row(
                     icon: Icons.folder_open_rounded,
                     label: 'Records awaiting sync',
-                    value: '${SalamaData.pendingRecords}',
+                    value: '$pending',
                   ),
                   const SizedBox(height: 6),
                   _Row(
                     icon: Icons.schedule_rounded,
                     label: 'Last synced',
-                    value: SalamaData.lastSync,
+                    value: lastSync,
                   ),
                 ],
               ),
@@ -130,22 +174,14 @@ class _SyncModal extends StatelessWidget {
                   Expanded(
                     flex: 2,
                     child: _ModalButton(
-                      label: isOnline ? 'Sync now' : 'Offline',
+                      label: _syncing
+                          ? 'Syncing…'
+                          : (isOnline ? 'Sync now' : 'Offline'),
                       icon: isOnline
                           ? Icons.cloud_upload_outlined
                           : Icons.cloud_off_rounded,
-                      enabled: isOnline,
-                      onTap: () {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Sync started — '
-                                'records uploading in the background.'),
-                            backgroundColor: AppColors.primary,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      },
+                      enabled: isOnline && !_syncing,
+                      onTap: _sync,
                     ),
                   ),
                 ],

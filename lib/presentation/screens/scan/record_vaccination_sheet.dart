@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/child_model.dart';
+import '../../providers/core_providers.dart';
+import '../../providers/data_providers.dart';
 
 void showRecordVaccinationSheet(BuildContext context, ChildModel child) {
   showModalBottomSheet(
@@ -14,16 +18,18 @@ void showRecordVaccinationSheet(BuildContext context, ChildModel child) {
   );
 }
 
-class _RecordVaccinationSheet extends StatefulWidget {
+class _RecordVaccinationSheet extends ConsumerStatefulWidget {
   final ChildModel child;
   const _RecordVaccinationSheet({required this.child});
 
   @override
-  State<_RecordVaccinationSheet> createState() =>
+  ConsumerState<_RecordVaccinationSheet> createState() =>
       _RecordVaccinationSheetState();
 }
 
-class _RecordVaccinationSheetState extends State<_RecordVaccinationSheet> {
+class _RecordVaccinationSheetState
+    extends ConsumerState<_RecordVaccinationSheet> {
+  bool _saving = false;
   static const _allVaccines = [
     'BCG', 'OPV-0', 'OPV-1', 'OPV-2', 'OPV-3',
     'Penta-1', 'Penta-2', 'Penta-3',
@@ -77,27 +83,61 @@ class _RecordVaccinationSheetState extends State<_RecordVaccinationSheet> {
     if (picked != null) setState(() => _date = picked);
   }
 
-  void _save() {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_rounded,
-                color: Colors.white, size: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '$_vaccine recorded for ${widget.child.name}',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ],
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final child = widget.child;
+    final batch = _batchCtrl.text.trim();
+    final online = ConnectivityService.instance.isOnline.value;
+    final clientUuid =
+        '${child.id}-$_vaccine-${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      if (online) {
+        await ref.read(vaccinationsRepositoryProvider).record(
+              childId: child.id,
+              vaccine: _vaccine,
+              batchNumber: batch.isEmpty ? null : batch,
+              status: 'given',
+              clientUuid: clientUuid,
+            );
+      } else {
+        await ref.read(syncRepositoryProvider).queueVaccination({
+          'childId': child.id,
+          'vaccine': _vaccine,
+          'status': 'given',
+          'batchNumber': batch.isEmpty ? null : batch,
+          'dateGiven': _date.toUtc().toIso8601String(),
+          'clientUuid': clientUuid,
+        });
+      }
+      // Refresh anything that depends on this child's doses.
+      ref.invalidate(childrenProvider);
+      ref.invalidate(childDetailProvider(child.id));
+      ref.invalidate(activityProvider);
+      ref.invalidate(syncStatusProvider);
+
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(online
+              ? '$_vaccine recorded for ${child.name}'
+              : '$_vaccine saved offline — will sync later'),
+          backgroundColor: online ? AppColors.success : AppColors.warning,
+          behavior: SnackBarBehavior.floating,
         ),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save: $e'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -142,7 +182,7 @@ class _RecordVaccinationSheetState extends State<_RecordVaccinationSheet> {
                           Text('Record vaccination',
                               style: AppTextStyles.h3),
                           Text(
-                              '${widget.child.name} • ${widget.child.id}',
+                              '${widget.child.name} • ${widget.child.code}',
                               style: AppTextStyles.captionMuted),
                         ],
                       ),
@@ -315,29 +355,38 @@ class _RecordVaccinationSheetState extends State<_RecordVaccinationSheet> {
                           color: AppColors.borderMedium, width: 1)),
                 ),
                 child: GestureDetector(
-                  onTap: _save,
+                  onTap: _saving ? null : _save,
                   child: Container(
                     height: 46,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
+                      color: _saving
+                          ? AppColors.primary.withValues(alpha: 0.6)
+                          : AppColors.primary,
                       borderRadius:
                           BorderRadius.circular(AppDimensions.radiusMD),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.save_rounded,
-                            size: 17, color: Colors.white),
-                        const SizedBox(width: 7),
-                        Text('Save record',
-                            style: AppTextStyles.labelLarge.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            )),
-                      ],
-                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.save_rounded,
+                                  size: 17, color: Colors.white),
+                              const SizedBox(width: 7),
+                              Text('Save record',
+                                  style: AppTextStyles.labelLarge.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                  )),
+                            ],
+                          ),
                   ),
                 ),
               ),

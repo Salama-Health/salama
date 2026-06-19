@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/dummy_data/salama_data.dart';
 import '../../../data/models/child_model.dart';
+import '../../../data/models/route_models.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/data_providers.dart';
 import 'visits_screen.dart' show priorityHue;
 
 void showRoutePlanSheet(BuildContext context) {
@@ -16,29 +19,28 @@ void showRoutePlanSheet(BuildContext context) {
   );
 }
 
-/// Children needing a visit, ordered by priority then nearest distance.
-List<ChildModel> _optimisedRoute() {
-  final stops = SalamaData.children
-      .where((c) => c.status == VisitStatus.toVisit)
-      .toList();
-  stops.sort((a, b) {
-    final byBand = a.riskBand.index.compareTo(b.riskBand.index);
-    if (byBand != 0) return byBand; // high band first
-    return a.distanceKm.compareTo(b.distanceKm); // then nearest
-  });
-  return stops;
-}
+RiskBand _band(String s) => switch (s) {
+      'High' => RiskBand.high,
+      'Medium' => RiskBand.medium,
+      'Watch' => RiskBand.watch,
+      _ => RiskBand.low,
+    };
 
-class _RoutePlanSheet extends StatelessWidget {
+String _priorityLabel(RiskBand b) => switch (b) {
+      RiskBand.high => 'High priority',
+      RiskBand.medium => 'Elevated',
+      RiskBand.watch => 'Watch',
+      RiskBand.low => 'Routine',
+    };
+
+class _RoutePlanSheet extends ConsumerWidget {
   const _RoutePlanSheet();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final mq = MediaQuery.of(context);
-    final route = _optimisedRoute();
-    final totalKm =
-        route.fold<double>(0, (s, c) => s + c.distanceKm);
-    final estMin = (totalKm * 11 + route.length * 14).round();
+    final routeAsync = ref.watch(routeProvider);
+    final facility = ref.watch(currentWorkerProvider)?.facility ?? 'your facility';
 
     return Container(
       constraints: BoxConstraints(maxHeight: mq.size.height * 0.92),
@@ -87,56 +89,44 @@ class _RoutePlanSheet extends StatelessWidget {
             const Divider(
                 height: 1, thickness: 1, color: AppColors.borderLight),
             Flexible(
-              child: ListView(
-                padding: const EdgeInsets.all(AppDimensions.spaceMD),
-                shrinkWrap: true,
-                children: [
-                  // Map preview
-                  _RouteMap(stops: route),
-                  const SizedBox(height: 8),
-                  // Summary
-                  Row(
+              child: routeAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 60),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.all(AppDimensions.spaceLG),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                          child: _SummaryTile(
-                              icon: Icons.place_outlined,
-                              value: '${route.length}',
-                              label: 'Stops')),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: _SummaryTile(
-                              icon: Icons.straighten_rounded,
-                              value: '${totalKm.toStringAsFixed(1)} km',
-                              label: 'Distance')),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: _SummaryTile(
-                              icon: Icons.schedule_rounded,
-                              value: '~$estMin min',
-                              label: 'Est. time')),
+                      const Icon(Icons.cloud_off_rounded,
+                          size: 30, color: AppColors.textTertiary),
+                      const SizedBox(height: 8),
+                      Text('Couldn’t load the route',
+                          style: AppTextStyles.h4),
+                      const SizedBox(height: 2),
+                      Text('$e',
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.captionMuted),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () => ref.invalidate(routeProvider),
+                        child: const Text('Retry'),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const _Tag('ROUTE ORDER'),
-                      const SizedBox(width: 6),
-                      Text('Highest priority first',
-                          style: AppTextStyles.captionMuted
-                              .copyWith(fontSize: 10)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // Start point
-                  _StartRow(),
-                  ...List.generate(route.length, (i) {
-                    return _StopRow(
-                      index: i + 1,
-                      child: route[i],
-                      isLast: i == route.length - 1,
-                    );
-                  }),
-                ],
+                ),
+                data: (route) => route.stops.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(AppDimensions.spaceLG),
+                        child: Center(
+                          child: Text('No pending visits to route',
+                              style: AppTextStyles.captionMuted),
+                        ),
+                      )
+                    : _RouteContent(route: route, facility: facility),
               ),
             ),
             // Action bar
@@ -192,9 +182,67 @@ class _RoutePlanSheet extends StatelessWidget {
   }
 }
 
-// ── Map preview ──────────────────────────────────────────────────────────
+class _RouteContent extends StatelessWidget {
+  final OptimizedRoute route;
+  final String facility;
+  const _RouteContent({required this.route, required this.facility});
+
+  @override
+  Widget build(BuildContext context) {
+    final stops = route.stops;
+    return ListView(
+      padding: const EdgeInsets.all(AppDimensions.spaceMD),
+      shrinkWrap: true,
+      children: [
+        _RouteMap(stops: stops),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+                child: _SummaryTile(
+                    icon: Icons.place_outlined,
+                    value: '${stops.length}',
+                    label: 'Stops')),
+            const SizedBox(width: 8),
+            Expanded(
+                child: _SummaryTile(
+                    icon: Icons.straighten_rounded,
+                    value: '${route.totalKm.toStringAsFixed(1)} km',
+                    label: 'Distance')),
+            const SizedBox(width: 8),
+            Expanded(
+                child: _SummaryTile(
+                    icon: Icons.schedule_rounded,
+                    value: '~${route.estMinutes} min',
+                    label: 'Est. time')),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const _Tag('ROUTE ORDER'),
+            const SizedBox(width: 6),
+            Text('Highest priority first',
+                style: AppTextStyles.captionMuted.copyWith(fontSize: 10)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _StartRow(facility: facility),
+        ...List.generate(stops.length, (i) {
+          return _StopRow(
+            index: i + 1,
+            stop: stops[i],
+            isLast: i == stops.length - 1,
+          );
+        }),
+      ],
+    );
+  }
+}
+
+// ── Map preview ──────────────────────────────────────────────────────────────
 class _RouteMap extends StatelessWidget {
-  final List<ChildModel> stops;
+  final List<RouteStop> stops;
   const _RouteMap({required this.stops});
 
   static const _pins = [
@@ -220,7 +268,6 @@ class _RouteMap extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Faux map + route
             Positioned.fill(
               child: CustomPaint(
                 painter: _MapPainter(
@@ -228,7 +275,6 @@ class _RouteMap extends StatelessWidget {
                 ),
               ),
             ),
-            // Start marker
             _PinAt(
               pos: _start,
               child: Container(
@@ -243,9 +289,8 @@ class _RouteMap extends StatelessWidget {
                     size: 8, color: Colors.white),
               ),
             ),
-            // Stop markers
             ...List.generate(stops.length.clamp(0, _pins.length), (i) {
-              final hue = priorityHue(stops[i].riskBand);
+              final hue = priorityHue(_band(stops[i].riskBand));
               return _PinAt(
                 pos: _pins[i],
                 child: Container(
@@ -266,36 +311,32 @@ class _RouteMap extends StatelessWidget {
                 ),
               );
             }),
-            // View map button
             Positioned(
               right: 8,
               bottom: 8,
-              child: GestureDetector(
-                onTap: () {},
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(AppDimensions.radiusFull),
-                    border: Border.all(
-                        color: AppColors.borderMedium, width: 1),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.map_outlined,
-                          size: 13, color: AppColors.primary),
-                      const SizedBox(width: 5),
-                      Text('Open full map',
-                          style: AppTextStyles.caption.copyWith(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 10.5,
-                          )),
-                    ],
-                  ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius:
+                      BorderRadius.circular(AppDimensions.radiusFull),
+                  border: Border.all(
+                      color: AppColors.borderMedium, width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.map_outlined,
+                        size: 13, color: AppColors.primary),
+                    const SizedBox(width: 5),
+                    Text('Open full map',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10.5,
+                        )),
+                  ],
                 ),
               ),
             ),
@@ -328,7 +369,6 @@ class _MapPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     Offset p(Offset f) => Offset(f.dx * size.width, f.dy * size.height);
 
-    // Faux streets.
     final street = Paint()
       ..color = Colors.white.withValues(alpha: 0.7)
       ..strokeWidth = 7;
@@ -340,7 +380,6 @@ class _MapPainter extends CustomPainter {
         Offset(size.width, size.height * 0.85),
         street..strokeWidth = 5);
 
-    // Faux blocks.
     final block = Paint()..color = Colors.white.withValues(alpha: 0.45);
     for (var i = 0; i < 6; i++) {
       canvas.drawRRect(
@@ -356,7 +395,6 @@ class _MapPainter extends CustomPainter {
       );
     }
 
-    // Route polyline (start → stops in order).
     final pts = <Offset>[
       p(_RouteMap._start),
       for (var i = 0; i < count; i++) p(_RouteMap._pins[i]),
@@ -367,7 +405,6 @@ class _MapPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
     for (var i = 0; i < pts.length - 1; i++) {
-      // dashed segments
       final a = pts[i], b = pts[i + 1];
       final dist = (b - a).distance;
       final steps = (dist / 9).floor().clamp(1, 999);
@@ -383,7 +420,7 @@ class _MapPainter extends CustomPainter {
   bool shouldRepaint(_MapPainter old) => old.count != count;
 }
 
-// ── Summary tile ─────────────────────────────────────────────────────────
+// ── Summary tile ─────────────────────────────────────────────────────────────
 class _SummaryTile extends StatelessWidget {
   final IconData icon;
   final String value;
@@ -408,8 +445,7 @@ class _SummaryTile extends StatelessWidget {
           Icon(icon, size: 14, color: AppColors.primary),
           const SizedBox(height: 3),
           Text(value,
-              style: AppTextStyles.h4
-                  .copyWith(fontWeight: FontWeight.w800)),
+              style: AppTextStyles.h4.copyWith(fontWeight: FontWeight.w800)),
           Text(label,
               style: AppTextStyles.captionMuted.copyWith(fontSize: 9.5)),
         ],
@@ -418,8 +454,11 @@ class _SummaryTile extends StatelessWidget {
   }
 }
 
-// ── Start row ────────────────────────────────────────────────────────────
+// ── Start row ────────────────────────────────────────────────────────────────
 class _StartRow extends StatelessWidget {
+  final String facility;
+  const _StartRow({required this.facility});
+
   @override
   Widget build(BuildContext context) {
     return IntrinsicHeight(
@@ -449,7 +488,7 @@ class _StartRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Start — Bentiu PHCC', style: AppTextStyles.h4),
+                Text('Start — $facility', style: AppTextStyles.h4),
                 Text('Your facility', style: AppTextStyles.captionMuted),
               ],
             ),
@@ -460,20 +499,21 @@ class _StartRow extends StatelessWidget {
   }
 }
 
-// ── Stop row ─────────────────────────────────────────────────────────────
+// ── Stop row ─────────────────────────────────────────────────────────────────
 class _StopRow extends StatelessWidget {
   final int index;
-  final ChildModel child;
+  final RouteStop stop;
   final bool isLast;
   const _StopRow({
     required this.index,
-    required this.child,
+    required this.stop,
     required this.isLast,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hue = priorityHue(child.riskBand);
+    final band = _band(stop.riskBand);
+    final hue = priorityHue(band);
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -497,8 +537,7 @@ class _StopRow extends StatelessWidget {
               ),
               if (!isLast)
                 Expanded(
-                  child:
-                      Container(width: 2, color: AppColors.borderLight),
+                  child: Container(width: 2, color: AppColors.borderLight),
                 ),
             ],
           ),
@@ -520,8 +559,8 @@ class _StopRow extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(child.name,
-                              style: AppTextStyles.h4),
+                          child:
+                              Text(stop.childName, style: AppTextStyles.h4),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -531,7 +570,7 @@ class _StopRow extends StatelessWidget {
                             borderRadius: BorderRadius.circular(
                                 AppDimensions.radiusFull),
                           ),
-                          child: Text(child.priorityLabel,
+                          child: Text(_priorityLabel(band),
                               style: AppTextStyles.caption.copyWith(
                                 color: Colors.white,
                                 fontSize: 9,
@@ -547,7 +586,7 @@ class _StopRow extends StatelessWidget {
                             size: 11, color: hue.accent),
                         const SizedBox(width: 4),
                         Expanded(
-                          child: Text(child.currentLocation,
+                          child: Text(stop.currentLocation ?? '—',
                               style: AppTextStyles.captionMuted
                                   .copyWith(fontSize: 10.5),
                               overflow: TextOverflow.ellipsis),
@@ -556,7 +595,7 @@ class _StopRow extends StatelessWidget {
                         const Icon(Icons.directions_walk_rounded,
                             size: 11, color: AppColors.textTertiary),
                         const SizedBox(width: 2),
-                        Text('${child.distanceKm} km',
+                        Text('${stop.distanceKm} km',
                             style: AppTextStyles.caption.copyWith(
                               color: AppColors.textPrimary,
                               fontWeight: FontWeight.w700,
@@ -575,7 +614,7 @@ class _StopRow extends StatelessWidget {
   }
 }
 
-// ── Shared ───────────────────────────────────────────────────────────────
+// ── Shared ───────────────────────────────────────────────────────────────────
 class _Tag extends StatelessWidget {
   final String text;
   const _Tag(this.text);

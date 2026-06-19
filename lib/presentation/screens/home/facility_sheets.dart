@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/dummy_data/salama_data.dart';
 import '../../../data/models/facility_model.dart';
 
 IconData hazardIcon(String hazard) {
@@ -15,23 +14,25 @@ IconData hazardIcon(String hazard) {
 }
 
 // ── All facilities bottom sheet ──────────────────────────────────────────
-void showAllFacilitiesSheet(BuildContext context) {
+void showAllFacilitiesSheet(
+    BuildContext context, List<FacilityModel> facilities) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.5),
-    builder: (_) => const _AllFacilitiesSheet(),
+    builder: (_) => _AllFacilitiesSheet(facilities: facilities),
   );
 }
 
 class _AllFacilitiesSheet extends StatelessWidget {
-  const _AllFacilitiesSheet();
+  final List<FacilityModel> facilities;
+  const _AllFacilitiesSheet({required this.facilities});
 
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final all = SalamaData.facilities;
+    final all = facilities;
     return Container(
       constraints: BoxConstraints(maxHeight: mq.size.height * 0.88),
       decoration: const BoxDecoration(

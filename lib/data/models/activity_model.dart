@@ -33,4 +33,42 @@ class ActivityModel {
     required this.subtitle,
     required this.time,
   });
+
+  static ActivityType typeFromString(String? s) {
+    switch (s) {
+      case 'vaccination':
+        return ActivityType.vaccination;
+      case 'visit':
+        return ActivityType.visit;
+      case 'sync':
+        return ActivityType.sync;
+      case 'alert':
+        return ActivityType.alert;
+      case 'registration':
+        return ActivityType.registration;
+      default:
+        return ActivityType.visit;
+    }
+  }
+
+  factory ActivityModel.fromJson(Map<String, dynamic> json) {
+    return ActivityModel(
+      type: typeFromString(json['type'] as String?),
+      title: json['title'] as String? ?? '',
+      subtitle: json['subtitle'] as String? ?? '',
+      time: _relative(json['createdAt']?.toString()),
+    );
+  }
+
+  static String _relative(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Yesterday';
+    return '${diff.inDays}d ago';
+  }
 }

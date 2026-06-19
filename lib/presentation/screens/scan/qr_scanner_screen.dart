@@ -1,42 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/dummy_data/salama_data.dart';
 import '../../../data/models/child_model.dart';
+import '../../providers/core_providers.dart';
+import '../../providers/data_providers.dart';
 
 /// Full-screen live QR scanner. Pops with the resolved [ChildModel] (or null).
-class QrScannerScreen extends StatefulWidget {
+class QrScannerScreen extends ConsumerStatefulWidget {
   const QrScannerScreen({super.key});
 
   @override
-  State<QrScannerScreen> createState() => _QrScannerScreenState();
+  ConsumerState<QrScannerScreen> createState() => _QrScannerScreenState();
 }
 
-class _QrScannerScreenState extends State<QrScannerScreen> {
+class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
   );
   bool _handled = false;
   bool _torch = false;
+  bool _loading = false;
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
-  }
-
-  /// Resolves the scanned code to a child. If the code carries a known
-  /// record id we use it; otherwise the code is mapped deterministically
-  /// so any QR scan still opens a record (prototype data).
-  ChildModel _resolve(String raw) {
-    final code = raw.trim().toUpperCase();
-    for (final c in SalamaData.children) {
-      if (code.contains(c.id.toUpperCase())) return c;
-    }
-    final idx = code.hashCode.abs() % SalamaData.children.length;
-    return SalamaData.children[idx];
   }
 
   void _onDetect(BarcodeCapture capture) {
@@ -46,17 +37,38 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       if (raw == null || raw.isEmpty) continue;
       _handled = true;
       _controller.stop();
-      Navigator.pop(context, _resolve(raw));
+      _resolveAndPop(raw);
       return;
     }
   }
 
+  /// Resolve the scanned code against the backend and pop with the child.
+  Future<void> _resolveAndPop(String raw) async {
+    setState(() => _loading = true);
+    final qr = raw.trim().replaceFirst(RegExp(r'^SALAMA[:\-A-Z]*:'), '');
+    try {
+      final child = await ref.read(childrenRepositoryProvider).lookupByQr(qr);
+      if (mounted) Navigator.pop(context, child);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _handled = false;
+      });
+      _controller.start();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No record found for that code')),
+      );
+    }
+  }
+
   Future<void> _manualEntry() async {
+    final children = ref.read(childrenProvider).valueOrNull ?? const [];
     final child = await showModalBottomSheet<ChildModel>(
       context: context,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.5),
-      builder: (_) => const _ManualEntrySheet(),
+      builder: (_) => _ManualEntrySheet(children: children),
     );
     if (child != null && mounted) {
       _handled = true;
@@ -178,6 +190,16 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
               ),
             ),
           ),
+          // Resolving overlay
+          if (_loading)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.55),
+                child: const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -263,7 +285,8 @@ class _ScannerOverlayPainter extends CustomPainter {
 
 // ── Manual entry sheet ───────────────────────────────────────────────────
 class _ManualEntrySheet extends StatelessWidget {
-  const _ManualEntrySheet();
+  final List<ChildModel> children;
+  const _ManualEntrySheet({required this.children});
 
   @override
   Widget build(BuildContext context) {
@@ -308,11 +331,11 @@ class _ManualEntrySheet extends StatelessWidget {
               child: ListView.separated(
                 padding: const EdgeInsets.all(AppDimensions.spaceMD),
                 shrinkWrap: true,
-                itemCount: SalamaData.children.length,
+                itemCount: children.length,
                 separatorBuilder: (context, index) =>
                     const SizedBox(height: 6),
                 itemBuilder: (context, i) {
-                  final c = SalamaData.children[i];
+                  final c = children[i];
                   return GestureDetector(
                     onTap: () => Navigator.pop(context, c),
                     child: Container(
@@ -345,7 +368,7 @@ class _ManualEntrySheet extends StatelessWidget {
                                   CrossAxisAlignment.start,
                               children: [
                                 Text(c.name, style: AppTextStyles.h4),
-                                Text('${c.id} • ${c.ageLabel}',
+                                Text('${c.code} • ${c.ageLabel}',
                                     style: AppTextStyles.captionMuted),
                               ],
                             ),

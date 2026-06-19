@@ -64,7 +64,7 @@ class _ScannedChildSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(child.name, style: AppTextStyles.h3),
-                        Text('Scanned • ${child.id}',
+                        Text('Scanned • ${child.code}',
                             style: AppTextStyles.captionMuted),
                       ],
                     ),

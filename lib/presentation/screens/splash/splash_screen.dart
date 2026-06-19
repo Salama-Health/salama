@@ -158,7 +158,7 @@ class _SplashScreenState extends State<SplashScreen>
                       // Get started
                       _GetStartedButton(
                         onPressed: () => Navigator.of(context)
-                            .pushReplacementNamed(AppConstants.routeHome),
+                            .pushNamed(AppConstants.routeLogin),
                       ),
                       const SizedBox(height: 12),
                       GestureDetector(

@@ -15,6 +15,11 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.2.0
   connectivity_plus: ^7.1.1
+  # ── Backend integration ──
+  flutter_riverpod: ^2.5.1      # state management
+  dio: ^5.7.0                   # HTTP client
+  flutter_secure_storage: ^9.2.2 # JWT token storage
+  shared_preferences: ^2.3.2    # offline sync queue + cached profile
 
 dev_dependencies:
   flutter_test:

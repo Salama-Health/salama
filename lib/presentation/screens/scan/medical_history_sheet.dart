@@ -93,7 +93,7 @@ class _MedicalHistorySheetState extends State<_MedicalHistorySheet> {
                             style: AppTextStyles.h3),
                         Text(
                             _scanned
-                                ? '${widget.child.name} • ${widget.child.id}'
+                                ? '${widget.child.name} • ${widget.child.code}'
                                 : 'Verify identity to view records',
                             style: AppTextStyles.captionMuted),
                       ],
@@ -271,7 +271,7 @@ class _HistoryView extends StatelessWidget {
                   size: 15, color: AppColors.success),
               const SizedBox(width: 6),
               Expanded(
-                child: Text('Identity verified — record C:${child.id}',
+                child: Text('Identity verified — record ${child.code}',
                     style: AppTextStyles.caption.copyWith(
                       color: AppColors.success,
                       fontWeight: FontWeight.w700,

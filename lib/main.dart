@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
 import 'core/services/connectivity_service.dart';
-import 'presentation/screens/splash/splash_screen.dart';
+import 'presentation/providers/core_providers.dart';
+import 'presentation/screens/auth/auth_gate.dart';
+import 'presentation/screens/auth/login_screen.dart';
 import 'presentation/screens/home/home_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -17,7 +22,15 @@ void main() {
     statusBarIconBrightness: Brightness.dark,
   ));
   ConnectivityService.instance.init();
-  runApp(const SalamaApp());
+
+  final prefs = await SharedPreferences.getInstance();
+
+  runApp(
+    ProviderScope(
+      overrides: [sharedPrefsProvider.overrideWithValue(prefs)],
+      child: const SalamaApp(),
+    ),
+  );
 }
 
 class SalamaApp extends StatelessWidget {
@@ -29,9 +42,9 @@ class SalamaApp extends StatelessWidget {
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      initialRoute: AppConstants.routeSplash,
+      home: const AuthGate(),
       routes: {
-        AppConstants.routeSplash: (_) => const SplashScreen(),
+        AppConstants.routeLogin: (_) => const LoginScreen(),
         AppConstants.routeHome: (_) => const HomeScreen(),
       },
     );

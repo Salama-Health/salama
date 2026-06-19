@@ -12,9 +12,19 @@ class AppConstants {
   static const String logo = 'assets/logo.png';
   static const String landingBg = 'assets/landing_screen_bg.png';
 
+  // ── Backend API ──
+  // Override at build time:
+  //   flutter run --dart-define=API_BASE_URL=https://your-host
+  // Android emulator reaches the host machine via 10.0.2.2.
+  static const String apiBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8000',
+  );
+
   // Route names
   static const String routeSplash = '/';
   static const String routeHome = '/home';
+  static const String routeLogin = '/login';
   static const String routeChildQr = '/child-qr';
 
   // Facility / location

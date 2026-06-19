@@ -1,37 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/dummy_data/salama_data.dart';
 import '../../../data/models/activity_model.dart';
+import '../../../data/models/child_model.dart';
 import '../../../data/models/facility_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/data_providers.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/brand_header.dart';
 import 'facility_sheets.dart';
 import 'sync_modal.dart';
 
-class HomeBody extends StatefulWidget {
+class HomeBody extends ConsumerWidget {
   final ValueChanged<int> onNavigate;
   const HomeBody({super.key, required this.onNavigate});
 
   @override
-  State<HomeBody> createState() => _HomeBodyState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final worker = ref.watch(currentWorkerProvider);
+    final firstName = (worker?.name.split(' ').first) ?? 'there';
 
-class _HomeBodyState extends State<HomeBody> {
-  @override
-  Widget build(BuildContext context) {
-    final w = SalamaData.worker;
-    final firstName = w.name.split(' ').first;
+    final childrenAsync = ref.watch(childrenProvider);
+    final facilitiesAsync = ref.watch(facilitiesProvider);
+    final activityAsync = ref.watch(activityProvider);
+    final syncAsync = ref.watch(syncStatusProvider);
 
-    // Top 4 facilities by climate-disruption score.
-    final topFacilities = [...SalamaData.facilities]
-      ..sort((a, b) => b.cdiScore.compareTo(a.cdiScore));
-    final shown = topFacilities.take(4).toList();
-    final atRisk = SalamaData.assignedFacilities
-        .where((f) => f.risk == FacilityRisk.danger)
+    final children = childrenAsync.valueOrNull ?? const <ChildModel>[];
+    final facilities = facilitiesAsync.valueOrNull ?? const <FacilityModel>[];
+
+    final shown = facilities.take(4).toList();
+    final atRisk = facilities
+        .where((f) => f.assigned && f.risk == FacilityRisk.danger)
         .length;
+    final total = children.length;
+    final highPriority = children
+        .where((c) =>
+            c.riskBand == RiskBand.high || c.riskBand == RiskBand.medium)
+        .length;
+    final dueSoon =
+        children.where((c) => c.status == VisitStatus.toVisit).length;
+    final recentlyVisited =
+        children.where((c) => c.status == VisitStatus.visited).length;
 
     return Column(
       children: [
@@ -49,68 +61,102 @@ class _HomeBodyState extends State<HomeBody> {
           ),
         ),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppDimensions.screenPadding,
-              AppDimensions.spaceMD,
-              AppDimensions.screenPadding,
-              AppDimensions.spaceXXL,
-            ),
-            children: [
-              // ── Greeting + worker summary ──────────────────────
-              Text('Hello, $firstName 👋',
-                  style: AppTextStyles.h1.copyWith(fontSize: 19)),
-              const SizedBox(height: 1),
-              Text('${w.role} · ${w.county}',
-                  style: AppTextStyles.bodySmall),
-              const SizedBox(height: AppDimensions.spaceMD),
-              _WorkerSummaryCard(
-                county: w.county,
-                facilities: w.facilitiesCount,
-                children: 128,
-                atRisk: atRisk,
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(childrenProvider);
+              ref.invalidate(facilitiesProvider);
+              ref.invalidate(activityProvider);
+              ref.invalidate(syncStatusProvider);
+              await Future.wait([
+                ref.read(childrenProvider.future),
+                ref.read(facilitiesProvider.future),
+              ]);
+            },
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppDimensions.screenPadding,
+                AppDimensions.spaceMD,
+                AppDimensions.screenPadding,
+                AppDimensions.spaceXXL,
               ),
-              const SizedBox(height: AppDimensions.spaceSM),
-
-              // ── Priority visit list ────────────────────────────
-              _PriorityVisitCard(onTap: () => widget.onNavigate(1)),
-              const SizedBox(height: AppDimensions.spaceMD),
-
-              // ── Facility risk section ──────────────────────────
-              _SectionHeader(
-                title: 'Facility risk',
-                action: 'View all',
-                onAction: () => showAllFacilitiesSheet(context),
-              ),
-              const SizedBox(height: 6),
-              ...shown.map((f) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: FacilityCard(
-                      facility: f,
-                      onTap: () => showFacilityDetailSheet(context, f),
-                    ),
-                  )),
-              const SizedBox(height: AppDimensions.spaceSM),
-
-              // ── Sync data card ─────────────────────────────────
-              ValueListenableBuilder<bool>(
-                valueListenable: ConnectivityService.instance.isOnline,
-                builder: (_, online, _) => _SyncCard(
-                  isOnline: online,
-                  onSync: () => showSyncModal(context),
+              children: [
+                Text('Hello, $firstName 👋',
+                    style: AppTextStyles.h1.copyWith(fontSize: 19)),
+                const SizedBox(height: 1),
+                Text('${worker?.role ?? "Community Health Worker"} · ${worker?.county ?? ""}',
+                    style: AppTextStyles.bodySmall),
+                const SizedBox(height: AppDimensions.spaceMD),
+                _WorkerSummaryCard(
+                  county: worker?.county ?? '—',
+                  facilities: worker?.facilitiesCount ?? facilities.length,
+                  children: total,
+                  atRisk: atRisk,
                 ),
-              ),
-              const SizedBox(height: AppDimensions.spaceMD),
+                const SizedBox(height: AppDimensions.spaceSM),
 
-              // ── Recent activity ────────────────────────────────
-              _SectionHeader(
-                title: 'Recent activity',
-                action: 'View all',
-                onAction: () {},
-              ),
-              const SizedBox(height: 6),
-              _RecentActivityCard(items: SalamaData.recentActivity),
-            ],
+                _PriorityVisitCard(
+                  total: total,
+                  highPriority: highPriority,
+                  dueSoon: dueSoon,
+                  recentlyVisited: recentlyVisited,
+                  onTap: () => onNavigate(1),
+                ),
+                const SizedBox(height: AppDimensions.spaceMD),
+
+                _SectionHeader(
+                  title: 'Facility risk',
+                  action: 'View all',
+                  onAction: () => showAllFacilitiesSheet(context, facilities),
+                ),
+                const SizedBox(height: 6),
+                facilitiesAsync.when(
+                  loading: () => const _SectionLoader(),
+                  error: (e, _) => _SectionError(
+                      message: '$e',
+                      onRetry: () => ref.invalidate(facilitiesProvider)),
+                  data: (_) => Column(
+                    children: shown
+                        .map((f) => Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: FacilityCard(
+                                facility: f,
+                                onTap: () =>
+                                    showFacilityDetailSheet(context, f),
+                              ),
+                            ))
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: AppDimensions.spaceSM),
+
+                ValueListenableBuilder<bool>(
+                  valueListenable: ConnectivityService.instance.isOnline,
+                  builder: (_, online, _) => _SyncCard(
+                    isOnline: online,
+                    pending: syncAsync.valueOrNull?.pendingRecords ?? 0,
+                    lastSync: syncAsync.valueOrNull?.lastSyncLabel ?? '—',
+                    onSync: () => showSyncModal(context),
+                  ),
+                ),
+                const SizedBox(height: AppDimensions.spaceMD),
+
+                _SectionHeader(
+                  title: 'Recent activity',
+                  action: 'View all',
+                  onAction: () {},
+                ),
+                const SizedBox(height: 6),
+                activityAsync.when(
+                  loading: () => const _SectionLoader(),
+                  error: (e, _) => _SectionError(
+                      message: '$e',
+                      onRetry: () => ref.invalidate(activityProvider)),
+                  data: (items) => items.isEmpty
+                      ? const _EmptyActivity()
+                      : _RecentActivityCard(items: items),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -118,7 +164,61 @@ class _HomeBodyState extends State<HomeBody> {
   }
 }
 
-// ── Notification bell ────────────────────────────────────────────────────
+// ── Shared small states ──────────────────────────────────────────────────────
+class _SectionLoader extends StatelessWidget {
+  const _SectionLoader();
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: SizedBox(
+            width: 20, height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+}
+
+class _SectionError extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _SectionError({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(AppDimensions.cardPaddingSm),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              size: 18, color: AppColors.textTertiary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Couldn’t load. $message',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.captionMuted),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyActivity extends StatelessWidget {
+  const _EmptyActivity();
+  @override
+  Widget build(BuildContext context) => AppCard(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Center(
+          child: Text('No recent activity',
+              style: AppTextStyles.captionMuted),
+        ),
+      );
+}
+
+// ── Notification bell ────────────────────────────────────────────────────────
 class _NotificationBell extends StatelessWidget {
   final int count;
   const _NotificationBell({required this.count});
@@ -160,7 +260,7 @@ class _NotificationBell extends StatelessWidget {
   }
 }
 
-// ── Section header ───────────────────────────────────────────────────────
+// ── Section header ───────────────────────────────────────────────────────────
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String action;
@@ -195,7 +295,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ── Worker summary card ──────────────────────────────────────────────────
+// ── Worker summary card ──────────────────────────────────────────────────────
 class _WorkerSummaryCard extends StatelessWidget {
   final String county;
   final int facilities;
@@ -332,10 +432,20 @@ class _WorkerStat extends StatelessWidget {
   }
 }
 
-// ── Priority visit card ──────────────────────────────────────────────────
+// ── Priority visit card ──────────────────────────────────────────────────────
 class _PriorityVisitCard extends StatelessWidget {
+  final int total;
+  final int highPriority;
+  final int dueSoon;
+  final int recentlyVisited;
   final VoidCallback onTap;
-  const _PriorityVisitCard({required this.onTap});
+  const _PriorityVisitCard({
+    required this.total,
+    required this.highPriority,
+    required this.dueSoon,
+    required this.recentlyVisited,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -383,7 +493,7 @@ class _PriorityVisitCard extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Text('128',
+                      Text('$total',
                           style: AppTextStyles.h3.copyWith(
                             color: AppColors.primary,
                             fontWeight: FontWeight.w800,
@@ -411,30 +521,30 @@ class _PriorityVisitCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: AppDimensions.cardPaddingSm, vertical: 9),
             child: Row(
-              children: const [
+              children: [
                 Expanded(
                   child: _MiniStat(
                     icon: Icons.outlined_flag_rounded,
                     iconColor: AppColors.riskHigh,
-                    value: '25',
+                    value: '$highPriority',
                     label: 'High priority',
                   ),
                 ),
-                _StatDivider(),
+                const _StatDivider(),
                 Expanded(
                   child: _MiniStat(
                     icon: Icons.schedule_rounded,
                     iconColor: AppColors.warningMid,
-                    value: '63',
+                    value: '$dueSoon',
                     label: 'Due soon',
                   ),
                 ),
-                _StatDivider(),
+                const _StatDivider(),
                 Expanded(
                   child: _MiniStat(
                     icon: Icons.check_circle_outline_rounded,
                     iconColor: AppColors.success,
-                    value: '40',
+                    value: '$recentlyVisited',
                     label: 'Recently visited',
                   ),
                 ),
@@ -494,11 +604,18 @@ class _MiniStat extends StatelessWidget {
   }
 }
 
-// ── Sync data card ───────────────────────────────────────────────────────
+// ── Sync data card ───────────────────────────────────────────────────────────
 class _SyncCard extends StatelessWidget {
   final bool isOnline;
+  final int pending;
+  final String lastSync;
   final VoidCallback onSync;
-  const _SyncCard({required this.isOnline, required this.onSync});
+  const _SyncCard({
+    required this.isOnline,
+    required this.pending,
+    required this.lastSync,
+    required this.onSync,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -559,7 +676,7 @@ class _SyncCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _SyncStat(
-                  value: '${SalamaData.pendingRecords}',
+                  value: '$pending',
                   label: 'Records awaiting sync',
                   highlight: true,
                 ),
@@ -567,7 +684,7 @@ class _SyncCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _SyncStat(
-                  value: SalamaData.lastSync,
+                  value: lastSync,
                   label: 'Last synced',
                 ),
               ),
@@ -656,7 +773,7 @@ class _SyncStat extends StatelessWidget {
   }
 }
 
-// ── Recent activity ──────────────────────────────────────────────────────
+// ── Recent activity ──────────────────────────────────────────────────────────
 class _RecentActivityCard extends StatelessWidget {
   final List<ActivityModel> items;
   const _RecentActivityCard({required this.items});

@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/dummy_data/salama_data.dart';
+import '../../../data/models/report_models.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/data_providers.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/brand_header.dart';
 import '../scan/scan_qr_sheet.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final w = SalamaData.worker;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final w = ref.watch(currentWorkerProvider);
+    final reportsAsync = ref.watch(reportsProvider);
+    final syncAsync = ref.watch(syncStatusProvider);
+
     return Column(
       children: [
         const SafeArea(
@@ -34,17 +40,18 @@ class ProfileScreen extends StatelessWidget {
                   style: AppTextStyles.bodySmall),
               const SizedBox(height: AppDimensions.spaceMD),
               _ProfileCard(
-                name: w.name,
-                role: w.role,
-                facility: '${w.facility}, ${w.county}',
-                phone: w.phone,
-                workerId: w.workerId,
-                onQr: () => showScanQrSheet(context),
+                name: w?.name ?? '—',
+                role: w?.role ?? '',
+                facility: w != null ? '${w.facility}, ${w.county}' : '',
+                phone: w?.phone ?? '',
+                workerId: w?.workerId ?? '',
+                active: w?.active ?? true,
+                onQr: () => showScanQrSheet(context, w),
               ),
               const SizedBox(height: AppDimensions.spaceMD),
               Text('Activity summary', style: AppTextStyles.h3),
               const SizedBox(height: 6),
-              const _ActivityCard(),
+              _ActivityCard(summary: reportsAsync.valueOrNull?.summary),
               const SizedBox(height: AppDimensions.spaceMD),
               Text('Account & settings', style: AppTextStyles.h3),
               const SizedBox(height: 6),
@@ -119,12 +126,16 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ]),
               const SizedBox(height: AppDimensions.spaceMD),
-              const _LogoutButton(),
+              _LogoutButton(
+                onTap: () => ref.read(authProvider.notifier).logout(),
+              ),
               const SizedBox(height: AppDimensions.spaceSM),
               Row(
                 children: [
-                  Text('Last synced: Today, 6:30 AM',
-                      style: AppTextStyles.captionMuted.copyWith(fontSize: 10)),
+                  Text(
+                      'Last synced: ${syncAsync.valueOrNull?.lastSyncLabel ?? "—"}',
+                      style:
+                          AppTextStyles.captionMuted.copyWith(fontSize: 10)),
                   const Spacer(),
                   Container(
                     width: 5,
@@ -151,13 +162,14 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-// ── Profile card ─────────────────────────────────────────────────────────
+// ── Profile card ─────────────────────────────────────────────────────────────
 class _ProfileCard extends StatelessWidget {
   final String name;
   final String role;
   final String facility;
   final String phone;
   final String workerId;
+  final bool active;
   final VoidCallback onQr;
 
   const _ProfileCard({
@@ -166,6 +178,7 @@ class _ProfileCard extends StatelessWidget {
     required this.facility,
     required this.phone,
     required this.workerId,
+    required this.active,
     required this.onQr,
   });
 
@@ -221,12 +234,13 @@ class _ProfileCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const StatusPill(
-                label: 'Active',
-                icon: Icons.verified_outlined,
-                color: AppColors.success,
-                background: AppColors.successLight,
-              ),
+              if (active)
+                const StatusPill(
+                  label: 'Active',
+                  icon: Icons.verified_outlined,
+                  color: AppColors.success,
+                  background: AppColors.successLight,
+                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -306,32 +320,40 @@ class _IconLine extends StatelessWidget {
   }
 }
 
-// ── Activity card ────────────────────────────────────────────────────────
+// ── Activity card ────────────────────────────────────────────────────────────
 class _ActivityCard extends StatelessWidget {
-  const _ActivityCard();
-
-  static const _stats = [
-    (Icons.groups_outlined, AppColors.primary, '128', 'Children\nvisited',
-        '↑ 18'),
-    (Icons.vaccines_outlined, AppColors.info, '96', 'Doses\nadministered',
-        '↑ 12'),
-    (Icons.event_available_outlined, AppColors.warningMid, '85%',
-        'Visits\ncompleted', '↑ 8pp'),
-    (Icons.schedule_rounded, AppColors.accentPurple, '63', 'Hours in\nfield',
-        'week'),
-  ];
+  final ReportSummary? summary;
+  const _ActivityCard({required this.summary});
 
   @override
   Widget build(BuildContext context) {
+    final reached = summary?.childrenReached.toString() ?? '—';
+    final doses = summary?.dosesThisMonth.toString() ?? '—';
+    final coverage = summary != null
+        ? '${(summary!.coverageRate * 100).round()}%'
+        : '—';
+    final dropout = summary != null
+        ? '${(summary!.dropoutRate * 100).round()}%'
+        : '—';
+
+    final stats = [
+      (Icons.groups_outlined, AppColors.primary, reached, 'Children\nreached'),
+      (Icons.vaccines_outlined, AppColors.info, doses, 'Doses this\nmonth'),
+      (Icons.event_available_outlined, AppColors.warningMid, coverage,
+          'Coverage\nrate'),
+      (Icons.trending_down_rounded, AppColors.accentPurple, dropout,
+          'Drop-out\nrate'),
+    ];
+
     return AppCard(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
       child: Row(
-        children: List.generate(_stats.length, (i) {
-          final s = _stats[i];
+        children: List.generate(stats.length, (i) {
+          final s = stats[i];
           return Expanded(
             child: Container(
               decoration: BoxDecoration(
-                border: i < _stats.length - 1
+                border: i < stats.length - 1
                     ? const Border(
                         right: BorderSide(
                             color: AppColors.borderLight, width: 1))
@@ -361,13 +383,6 @@ class _ActivityCard extends StatelessWidget {
                         fontSize: 9,
                         height: 1.25,
                       )),
-                  const SizedBox(height: 2),
-                  Text(s.$5,
-                      style: AppTextStyles.caption.copyWith(
-                        fontSize: 9,
-                        color: AppColors.success,
-                        fontWeight: FontWeight.w700,
-                      )),
                 ],
               ),
             ),
@@ -378,7 +393,7 @@ class _ActivityCard extends StatelessWidget {
   }
 }
 
-// ── Settings group ───────────────────────────────────────────────────────
+// ── Settings group ───────────────────────────────────────────────────────────
 class _SettingsGroup extends StatelessWidget {
   final List<_SettingItem> items;
   const _SettingsGroup({required this.items});
@@ -473,31 +488,35 @@ class _SettingItem extends StatelessWidget {
   }
 }
 
-// ── Logout ───────────────────────────────────────────────────────────────
+// ── Logout ───────────────────────────────────────────────────────────────────
 class _LogoutButton extends StatelessWidget {
-  const _LogoutButton();
+  final VoidCallback onTap;
+  const _LogoutButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
-        border: Border.all(color: AppColors.borderLight, width: 1),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.logout_rounded, size: 15, color: AppColors.error),
-          const SizedBox(width: 7),
-          Text('Log out',
-              style: AppTextStyles.labelLarge.copyWith(
-                color: AppColors.error,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              )),
-        ],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+          border: Border.all(color: AppColors.borderLight, width: 1),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.logout_rounded, size: 15, color: AppColors.error),
+            const SizedBox(width: 7),
+            Text('Log out',
+                style: AppTextStyles.labelLarge.copyWith(
+                  color: AppColors.error,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                )),
+          ],
+        ),
       ),
     );
   }
