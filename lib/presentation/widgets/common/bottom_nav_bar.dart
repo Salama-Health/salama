@@ -16,7 +16,7 @@ class AppBottomNavBar extends StatelessWidget {
   static const _items = [
     (Icons.home_rounded, Icons.home_outlined, 'Home'),
     (Icons.checklist_rounded, Icons.checklist_rounded, 'Visits'),
-    (Icons.qr_code_scanner_rounded, Icons.qr_code_scanner_rounded, 'Scan QR'),
+    (Icons.vaccines_rounded, Icons.vaccines_outlined, 'Vaccinated'),
     (Icons.bar_chart_rounded, Icons.bar_chart_outlined, 'Reports'),
     (Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
   ];

@@ -6,16 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../data/models/child_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/data_providers.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
-import '../scan/qr_scanner_screen.dart';
-import '../scan/scanned_child_sheet.dart';
 import 'home_body.dart';
 import '../visits/visits_screen.dart';
 import '../reports/reports_screen.dart';
+import '../children/vaccinated_children_screen.dart';
 import '../profile/profile_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -89,17 +87,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  /// Bottom-nav index 2 is Scan QR — it opens the live camera scanner.
-  Future<void> _goTo(int i) async {
-    if (i == 2) {
-      final child = await Navigator.of(context).push<ChildModel?>(
-        MaterialPageRoute(builder: (_) => const QrScannerScreen()),
-      );
-      if (child != null && mounted) {
-        showScannedChildSheet(context, child);
-      }
-      return;
-    }
+  /// Switches tab. Every slot is now a real tab: slot 2 used to launch the
+  /// camera scanner and return, which is why this was async.
+  void _goTo(int i) {
     setState(() => _index = i);
   }
 
@@ -112,7 +102,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         children: [
           HomeBody(onNavigate: _goTo),
           VisitsScreen(onNavigate: _goTo),
-          const SizedBox.shrink(), // slot 2 — Scan QR opens the camera
+          // Slot 2 was the QR camera. It is now the vaccinated record, which
+          // is a place a worker returns to rather than a one-shot action.
+          const VaccinatedChildrenScreen(showBack: false),
           const ReportsScreen(),
           const ProfileScreen(),
         ],

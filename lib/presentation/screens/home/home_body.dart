@@ -14,6 +14,7 @@ import '../../widgets/common/brand_header.dart';
 import '../../widgets/common/offline_banner.dart';
 import '../activity/activity_screen.dart';
 import '../alerts/alerts_screen.dart';
+import '../children/child_code_sheet.dart';
 import '../children/register_child_screen.dart';
 import 'facility_sheets.dart';
 import 'sync_modal.dart';
@@ -104,7 +105,8 @@ class HomeBody extends ConsumerWidget {
                     MaterialPageRoute(
                         builder: (_) => const RegisterChildScreen()),
                   ),
-                  onScan: () => onNavigate(2),
+                  onScan: () => showChildCodeSheet(context),
+                  onVaccinated: () => onNavigate(2),
                 ),
                 const SizedBox(height: AppDimensions.spaceSM),
 
@@ -291,13 +293,18 @@ class _NotificationBell extends ConsumerWidget {
 }
 
 // ── Quick actions ────────────────────────────────────────────────────────────
-/// The two things a worker starts a visit with: adding a new child, or pulling
-/// up one who already has a code.
+/// What a worker starts a visit with: adding a new child, pulling up one who
+/// already has a code, or reviewing the doses they have already given.
 class _QuickActions extends StatelessWidget {
   final VoidCallback onRegister;
   final VoidCallback onScan;
+  final VoidCallback onVaccinated;
 
-  const _QuickActions({required this.onRegister, required this.onScan});
+  const _QuickActions({
+    required this.onRegister,
+    required this.onScan,
+    required this.onVaccinated,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -317,11 +324,22 @@ class _QuickActions extends StatelessWidget {
         Expanded(
           flex: 2,
           child: _ActionTile(
-            icon: Icons.qr_code_scanner_rounded,
-            label: 'Scan code',
+            icon: Icons.tag_rounded,
+            label: 'Enter code',
             hint: 'Find a record',
             primary: false,
             onTap: onScan,
+          ),
+        ),
+        const SizedBox(width: AppDimensions.spaceSM),
+        Expanded(
+          flex: 2,
+          child: _ActionTile(
+            icon: Icons.vaccines_rounded,
+            label: 'Vaccinated',
+            hint: 'Doses you gave',
+            primary: false,
+            onTap: onVaccinated,
           ),
         ),
       ],

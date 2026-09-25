@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/activity_model.dart';
+import '../../data/models/administered_dose.dart';
 import '../../data/models/alert_model.dart';
 import '../../data/models/child_model.dart';
 import '../../data/models/facility_model.dart';
@@ -29,6 +30,21 @@ final childDetailProvider =
 final vaccinationHistoryProvider =
     FutureProvider.family<List<VaccinationRecord>, String>((ref, childId) async {
   return ref.watch(vaccinationsRepositoryProvider).history(childId);
+});
+
+/// Doses administered, newest first. Keyed by scope: 'mine' is this worker's
+/// own record, 'region' is every dose given in their county whoever gave it.
+final administeredDosesProvider =
+    FutureProvider.family<List<AdministeredDose>, String>((ref, scope) async {
+  return ref.watch(vaccinationsRepositoryProvider).administered(scope: scope);
+});
+
+/// The same doses grouped by child - children vaccinated, most recently first.
+/// Derived from [administeredDosesProvider] so both views share one request.
+final vaccinatedChildrenProvider =
+    FutureProvider.family<List<VaccinatedChild>, String>((ref, scope) async {
+  final doses = await ref.watch(administeredDosesProvider(scope).future);
+  return VaccinatedChild.groupByChild(doses);
 });
 
 /// Facilities visible to the worker, sorted by CDI (highest first).

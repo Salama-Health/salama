@@ -6,6 +6,10 @@ class VaccinationRecord {
   final String date;
   final DoseStatus status;
   final String? batch;
+  /// Name of the worker who gave the dose, when the server resolved it.
+  /// Lets a worker tell their own work from a colleague's before deciding
+  /// what to give next.
+  final String? administeredBy;
 
   const VaccinationRecord({
     required this.vaccine,
@@ -13,6 +17,7 @@ class VaccinationRecord {
     required this.date,
     required this.status,
     this.batch,
+    this.administeredBy,
   });
 
   static DoseStatus statusFromString(String? s) {
@@ -41,6 +46,7 @@ class VaccinationRecord {
       date: dateLabel,
       status: statusFromString(json['status'] as String?),
       batch: json['batch'] as String?,
+      administeredBy: json['administeredBy'] as String?,
     );
   }
 

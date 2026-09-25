@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -32,14 +34,10 @@ class _RecordVaccinationSheet extends ConsumerStatefulWidget {
 class _RecordVaccinationSheetState
     extends ConsumerState<_RecordVaccinationSheet> {
   bool _saving = false;
-  static const _allVaccines = [
-    'BCG', 'OPV-0', 'OPV-1', 'OPV-2', 'OPV-3',
-    'Penta-1', 'Penta-2', 'Penta-3',
-    'Rota-1', 'Rota-2', 'PCV-1', 'PCV-2', 'PCV-3',
-    'Measles-1', 'Measles-2', 'Yellow Fever',
-  ];
 
-  late String _vaccine;
+  // Null when the child has nothing due. The sheet then offers no vaccine to
+  // record rather than defaulting to one the server would reject.
+  String? _vaccine;
   DateTime _date = DateTime.now();
   final _batchCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
@@ -48,9 +46,8 @@ class _RecordVaccinationSheetState
   @override
   void initState() {
     super.initState();
-    _vaccine = widget.child.dueVaccines.isNotEmpty
-        ? widget.child.dueVaccines.first
-        : _allVaccines.first;
+    final due = widget.child.dueVaccines;
+    _vaccine = due.isEmpty ? null : due.first;
   }
 
   @override
@@ -60,12 +57,10 @@ class _RecordVaccinationSheetState
     super.dispose();
   }
 
-  // Vaccine options — due ones first, then the rest.
-  List<String> get _options {
-    final due = widget.child.dueVaccines;
-    final rest = _allVaccines.where((v) => !due.contains(v));
-    return [...due, ...rest];
-  }
+  /// Only what is actually due. A vaccine already given, or not yet reached on
+  /// the schedule, is refused by the server (409 / 400), so offering it here
+  /// would only produce an error the worker cannot act on.
+  List<String> get _options => widget.child.dueVaccines;
 
   String get _dateLabel {
     const months = [
@@ -87,20 +82,25 @@ class _RecordVaccinationSheetState
 
   Future<void> _save() async {
     if (_saving) return;
+    final vaccine = _vaccine;
+    if (vaccine == null) {
+      _toast('Nothing is due for this child right now.', AppColors.warning);
+      return;
+    }
     setState(() => _saving = true);
 
     final child = widget.child;
     final batch = _batchCtrl.text.trim();
     final payload = <String, dynamic>{
       'childId': child.id,
-      'vaccine': _vaccine,
+      'vaccine': vaccine,
       'status': 'given',
       'batchNumber': batch.isEmpty ? null : batch,
       'site': _site,
       'notes': _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       'dateGiven': _date.toUtc().toIso8601String(),
       'clientUuid':
-          '${child.id}-$_vaccine-${DateTime.now().millisecondsSinceEpoch}',
+          '${child.id}-$vaccine-${DateTime.now().millisecondsSinceEpoch}',
     };
 
     final WriteResult<VaccinationRecord> result;
@@ -128,16 +128,26 @@ class _RecordVaccinationSheetState
     ref.invalidate(childrenProvider);
     ref.invalidate(childDetailProvider(child.id));
     ref.invalidate(vaccinationHistoryProvider(child.id));
+    ref.invalidate(administeredDosesProvider);
     ref.invalidate(activityProvider);
     ref.invalidate(syncStatusProvider);
     ref.invalidate(alertsProvider);
+
+    // Confirm the dose on the device. Deliberately not awaited and never
+    // allowed to throw: a notification is a confirmation of work already
+    // done, so it must not delay the sheet closing or fail the save.
+    unawaited(NotificationService.instance.doseRecorded(
+      childName: child.name,
+      vaccine: vaccine,
+      pending: !result.synced,
+    ));
 
     if (!mounted) return;
     Navigator.pop(context);
     _toast(
       result.synced
-          ? '$_vaccine recorded for ${child.name}'
-          : '$_vaccine saved on this phone — will sync later',
+          ? '$vaccine recorded for ${child.name}'
+          : '$vaccine saved on this phone — will sync later',
       result.synced ? AppColors.success : AppColors.warning,
     );
   }
@@ -155,6 +165,7 @@ class _RecordVaccinationSheetState
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
+    final child = widget.child;
     return Padding(
       padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
       child: Container(
@@ -211,60 +222,103 @@ class _RecordVaccinationSheetState
                   padding: const EdgeInsets.all(AppDimensions.spaceMD),
                   shrinkWrap: true,
                   children: [
-                    _Label('Vaccine'),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: _options.map((v) {
-                        final selected = _vaccine == v;
-                        final due = widget.child.dueVaccines.contains(v);
-                        return GestureDetector(
-                          onTap: () => setState(() => _vaccine = v),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 11, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? AppColors.primary
-                                  : AppColors.cardBackground,
-                              borderRadius: BorderRadius.circular(
-                                  AppDimensions.radiusFull),
-                              border: Border.all(
-                                color: selected
-                                    ? AppColors.primary
-                                    : (due
-                                        ? AppColors.primary
-                                            .withValues(alpha: 0.4)
-                                        : AppColors.borderMedium),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                    // What the child already has, and who gave it. Shown
+                    // before the picker so the worker decides against the
+                    // record rather than from memory.
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final given =
+                            ref.watch(vaccinationHistoryProvider(child.id));
+                        final doses = (given.valueOrNull ?? const [])
+                            .where((d) => d.status == DoseStatus.given)
+                            .toList();
+                        if (doses.isEmpty) return const SizedBox.shrink();
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _Label('Already given'),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
                               children: [
-                                if (due) ...[
-                                  Icon(Icons.circle,
-                                      size: 6,
-                                      color: selected
-                                          ? Colors.white
-                                          : AppColors.primary),
-                                  const SizedBox(width: 4),
-                                ],
-                                Text(v,
-                                    style: AppTextStyles.caption.copyWith(
-                                      color: selected
-                                          ? Colors.white
-                                          : AppColors.textPrimary,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 11,
-                                    )),
+                                for (final d in doses)
+                                  _GivenChip(
+                                    vaccine: d.vaccine,
+                                    date: d.date,
+                                    by: d.administeredBy,
+                                  ),
                               ],
                             ),
-                          ),
+                            const SizedBox(height: 14),
+                          ],
                         );
-                      }).toList(),
+                      },
                     ),
+
+                    _Label('Due now'),
+                    const SizedBox(height: 6),
+                    if (_options.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(AppDimensions.spaceMD),
+                        decoration: BoxDecoration(
+                          color: AppColors.successLight,
+                          borderRadius:
+                              BorderRadius.circular(AppDimensions.radiusMD),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_rounded,
+                                size: 16, color: AppColors.success),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${child.name} is up to date. Nothing is due '
+                                'right now.',
+                                style: AppTextStyles.caption.copyWith(
+                                    color: AppColors.textPrimary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: _options.map((v) {
+                          final selected = _vaccine == v;
+                          return GestureDetector(
+                            onTap: () => setState(() => _vaccine = v),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 11, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? AppColors.primary
+                                    : AppColors.cardBackground,
+                                borderRadius: BorderRadius.circular(
+                                    AppDimensions.radiusFull),
+                                border: Border.all(
+                                  color: selected
+                                      ? AppColors.primary
+                                      : AppColors.primary
+                                          .withValues(alpha: 0.4),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(v,
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: selected
+                                        ? Colors.white
+                                        : AppColors.textPrimary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                  )),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     const SizedBox(height: 14),
                     _Label('Date administered'),
                     const SizedBox(height: 6),
@@ -473,6 +527,51 @@ class _CloseButton extends StatelessWidget {
         ),
         child: const Icon(Icons.close_rounded,
             size: 14, color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
+// ── Already-given dose ───────────────────────────────────────────────────────
+/// A dose the child already has. Read-only by design: the server refuses a
+/// repeat with a 409, so showing it as selectable would only produce an error.
+class _GivenChip extends StatelessWidget {
+  final String vaccine;
+  final String date;
+  final String? by;
+
+  const _GivenChip({required this.vaccine, required this.date, this.by});
+
+  @override
+  Widget build(BuildContext context) {
+    final who = (by == null || by!.isEmpty) ? '' : ' · $by';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppColors.successLight,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_rounded,
+                  size: 12, color: AppColors.success),
+              const SizedBox(width: 4),
+              Text(vaccine,
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  )),
+            ],
+          ),
+          Text('$date$who',
+              style: AppTextStyles.captionMuted.copyWith(fontSize: 10)),
+        ],
       ),
     );
   }
