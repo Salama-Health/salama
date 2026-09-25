@@ -5,7 +5,13 @@ class ApiException implements Exception {
   final String message;
   final int? statusCode;
 
-  const ApiException(this.message, {this.statusCode});
+  /// True when the request never reached the server (no connection, DNS
+  /// failure, timeout). Callers use this to decide whether it is safe to fall
+  /// back to cached data or to queue the action for later — as opposed to a
+  /// genuine rejection from the server, which must not be masked.
+  final bool isNetwork;
+
+  const ApiException(this.message, {this.statusCode, this.isNetwork = false});
 
   bool get isUnauthorized => statusCode == 401;
 
@@ -27,10 +33,24 @@ class ApiException implements Exception {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-        return const ApiException('The server took too long to respond.');
+        return const ApiException('The server took too long to respond.',
+            isNetwork: true);
       case DioExceptionType.connectionError:
         return const ApiException(
           'Cannot reach the server. Check your connection.',
+          isNetwork: true,
+        );
+      case DioExceptionType.unknown:
+        // Dio reports socket/TLS failures here when there is no response.
+        if (e.response == null) {
+          return const ApiException(
+            'Cannot reach the server. Check your connection.',
+            isNetwork: true,
+          );
+        }
+        return ApiException(
+          detail ?? 'Something went wrong. Please try again.',
+          statusCode: code,
         );
       default:
         if (code == 401) {

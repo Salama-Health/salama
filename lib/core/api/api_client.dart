@@ -37,7 +37,12 @@ class ApiClient {
         handler.next(options);
       },
       onError: (e, handler) async {
-        final isAuthCall = e.requestOptions.path.contains('/auth/');
+        // Only login and refresh are non-refreshable. /auth/me must be
+        // retried after a refresh, or an expired access token signs the
+        // worker out at startup even though the refresh token is still good.
+        final path = e.requestOptions.path;
+        final isAuthCall =
+            path.contains('/auth/login') || path.contains('/auth/refresh');
         if (e.response?.statusCode == 401 &&
             !isAuthCall &&
             e.requestOptions.extra['retried'] != true) {

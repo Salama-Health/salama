@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/report_models.dart';
+import '../../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/data_providers.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/brand_header.dart';
 import '../scan/scan_qr_sheet.dart';
+import 'settings_sheets.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -18,6 +21,7 @@ class ProfileScreen extends ConsumerWidget {
     final w = ref.watch(currentWorkerProvider);
     final reportsAsync = ref.watch(reportsProvider);
     final syncAsync = ref.watch(syncStatusProvider);
+    final settings = ref.watch(settingsProvider);
 
     return Column(
       children: [
@@ -55,74 +59,84 @@ class ProfileScreen extends ConsumerWidget {
               const SizedBox(height: AppDimensions.spaceMD),
               Text('Account & settings', style: AppTextStyles.h3),
               const SizedBox(height: 6),
-              const _SettingsGroup(items: [
+              _SettingsGroup(items: [
                 _SettingItem(
                   icon: Icons.person_outline_rounded,
                   iconColor: AppColors.primary,
                   title: 'Personal information',
-                  subtitle: 'View and update your details',
+                  subtitle: 'View your details and posting',
+                  onTap: () => showPersonalInfoSheet(context, w),
                 ),
                 _SettingItem(
                   icon: Icons.lock_outline_rounded,
                   iconColor: AppColors.info,
                   title: 'Security',
-                  subtitle: 'Change password and manage PIN',
+                  subtitle: 'Change the PIN you sign in with',
+                  onTap: () => showSecuritySheet(context),
                 ),
                 _SettingItem(
                   icon: Icons.language_rounded,
                   iconColor: AppColors.primary,
                   title: 'Language',
-                  subtitle: 'English (US)',
-                  trailingText: 'English',
+                  subtitle: settings.language.label,
+                  trailingText: settings.language.nativeLabel,
+                  onTap: () => showLanguageSheet(context),
                 ),
                 _SettingItem(
                   icon: Icons.notifications_none_rounded,
                   iconColor: AppColors.accentPurple,
                   title: 'Notifications',
                   subtitle: 'Manage alerts and reminders',
+                  onTap: () => showNotificationsSheet(context),
                 ),
                 _SettingItem(
                   icon: Icons.cloud_sync_outlined,
                   iconColor: AppColors.warningMid,
                   title: 'Sync settings',
                   subtitle: 'Data sync over Wi-Fi or mobile data',
+                  onTap: () => showSyncSettingsSheet(context),
                 ),
                 _SettingItem(
                   icon: Icons.smartphone_rounded,
                   iconColor: AppColors.primary,
                   title: 'App settings',
-                  subtitle: 'Offline mode, data usage and more',
+                  subtitle: 'Offline data and storage',
                   isLast: true,
+                  onTap: () => showAppSettingsSheet(context),
                 ),
               ]),
               const SizedBox(height: AppDimensions.spaceMD),
               Text('Support & resources', style: AppTextStyles.h3),
               const SizedBox(height: 6),
-              const _SettingsGroup(items: [
+              _SettingsGroup(items: [
                 _SettingItem(
                   icon: Icons.help_outline_rounded,
                   iconColor: AppColors.primary,
-                  title: 'Help center',
-                  subtitle: 'FAQs and user guides',
+                  title: 'Help centre',
+                  subtitle: 'Common questions, answered offline',
+                  onTap: () => showHelpSheet(context),
                 ),
                 _SettingItem(
                   icon: Icons.headset_mic_outlined,
                   iconColor: AppColors.info,
                   title: 'Contact support',
                   subtitle: 'Get help from the Salama Health team',
+                  onTap: () => showContactSupportSheet(context),
                 ),
                 _SettingItem(
                   icon: Icons.menu_book_outlined,
                   iconColor: AppColors.warningMid,
                   title: 'Training materials',
-                  subtitle: 'View guides and training resources',
+                  subtitle: 'Field guides for each task',
+                  onTap: () => showTrainingSheet(context),
                 ),
                 _SettingItem(
                   icon: Icons.info_outline_rounded,
                   iconColor: AppColors.accentPurple,
                   title: 'About Salama Health',
-                  subtitle: 'App version 1.0.0',
+                  subtitle: 'Version ${AppConstants.appVersion}',
                   isLast: true,
+                  onTap: () => showAboutAppSheet(context),
                 ),
               ]),
               const SizedBox(height: AppDimensions.spaceMD),
@@ -414,6 +428,7 @@ class _SettingItem extends StatelessWidget {
   final String subtitle;
   final String? trailingText;
   final bool isLast;
+  final VoidCallback? onTap;
 
   const _SettingItem({
     required this.icon,
@@ -422,67 +437,72 @@ class _SettingItem extends StatelessWidget {
     required this.subtitle,
     this.trailingText,
     this.isLast = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: isLast
-            ? null
-            : const Border(
-                bottom: BorderSide(
-                    color: AppColors.borderLight, width: 1)),
-      ),
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.cardPaddingSm, vertical: 9),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
-            ),
-            child: Icon(icon, size: 15, color: iconColor),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppTextStyles.h4),
-                Text(subtitle, style: AppTextStyles.captionMuted),
-              ],
-            ),
-          ),
-          if (trailingText != null)
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        decoration: BoxDecoration(
+          border: isLast
+              ? null
+              : const Border(
+                  bottom:
+                      BorderSide(color: AppColors.borderLight, width: 1)),
+        ),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.cardPaddingSm, vertical: 9),
+        child: Row(
+          children: [
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
-                color: AppColors.cardBackground,
+                color: iconColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
-                border: Border.all(color: AppColors.borderMedium, width: 1),
               ),
-              child: Row(
+              child: Icon(icon, size: 15, color: iconColor),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(trailingText!,
-                      style: AppTextStyles.caption.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 10.5,
-                      )),
-                  const Icon(Icons.keyboard_arrow_down_rounded,
-                      size: 13, color: AppColors.textSecondary),
+                  Text(title, style: AppTextStyles.h4),
+                  Text(subtitle, style: AppTextStyles.captionMuted),
                 ],
               ),
-            )
-          else
-            const Icon(Icons.chevron_right_rounded,
-                size: 18, color: AppColors.textTertiary),
-        ],
+            ),
+            if (trailingText != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
+                  border: Border.all(color: AppColors.borderMedium, width: 1),
+                ),
+                child: Row(
+                  children: [
+                    Text(trailingText!,
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10.5,
+                        )),
+                    const Icon(Icons.keyboard_arrow_down_rounded,
+                        size: 13, color: AppColors.textSecondary),
+                  ],
+                ),
+              )
+            else
+              const Icon(Icons.chevron_right_rounded,
+                  size: 18, color: AppColors.textTertiary),
+          ],
+        ),
       ),
     );
   }

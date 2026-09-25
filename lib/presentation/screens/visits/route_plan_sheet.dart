@@ -7,6 +7,7 @@ import '../../../data/models/child_model.dart';
 import '../../../data/models/route_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/data_providers.dart';
+import 'route_run_screen.dart';
 import 'visits_screen.dart' show priorityHue;
 
 void showRoutePlanSheet(BuildContext context) {
@@ -141,12 +142,20 @@ class _RoutePlanSheet extends ConsumerWidget {
               ),
               child: GestureDetector(
                 onTap: () {
+                  final stops = routeAsync.valueOrNull;
+                  if (stops == null || stops.stops.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('No stops to run yet.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                    return;
+                  }
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Route started — navigate to stop 1.'),
-                      backgroundColor: AppColors.primary,
-                      behavior: SnackBarBehavior.floating,
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => RouteRunScreen(route: stops),
                     ),
                   );
                 },

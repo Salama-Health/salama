@@ -11,6 +11,10 @@ import '../../providers/auth_provider.dart';
 import '../../providers/data_providers.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/brand_header.dart';
+import '../../widgets/common/offline_banner.dart';
+import '../activity/activity_screen.dart';
+import '../alerts/alerts_screen.dart';
+import '../children/register_child_screen.dart';
 import 'facility_sheets.dart';
 import 'sync_modal.dart';
 
@@ -55,11 +59,12 @@ class HomeBody extends ConsumerWidget {
               children: const [
                 ConnectionPill(),
                 SizedBox(width: 8),
-                _NotificationBell(count: 2),
+                _NotificationBell(),
               ],
             ),
           ),
         ),
+        const OfflineBanner(),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
@@ -91,6 +96,15 @@ class HomeBody extends ConsumerWidget {
                   facilities: worker?.facilitiesCount ?? facilities.length,
                   children: total,
                   atRisk: atRisk,
+                ),
+                const SizedBox(height: AppDimensions.spaceSM),
+
+                _QuickActions(
+                  onRegister: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const RegisterChildScreen()),
+                  ),
+                  onScan: () => onNavigate(2),
                 ),
                 const SizedBox(height: AppDimensions.spaceSM),
 
@@ -143,7 +157,9 @@ class HomeBody extends ConsumerWidget {
                 _SectionHeader(
                   title: 'Recent activity',
                   action: 'View all',
-                  onAction: () {},
+                  onAction: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ActivityScreen()),
+                  ),
                 ),
                 const SizedBox(height: 6),
                 activityAsync.when(
@@ -219,42 +235,169 @@ class _EmptyActivity extends StatelessWidget {
 }
 
 // ── Notification bell ────────────────────────────────────────────────────────
-class _NotificationBell extends StatelessWidget {
-  final int count;
-  const _NotificationBell({required this.count});
+/// Opens the alerts screen. The badge is the real number of unread alerts —
+/// facilities at risk, overdue children and work waiting to sync — so a zero
+/// count shows no badge at all.
+class _NotificationBell extends ConsumerWidget {
+  const _NotificationBell();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(unreadAlertCountProvider);
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AlertsScreen()),
+      ),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: Stack(
+          children: [
+            const Center(
+              child: Icon(Icons.notifications_none_rounded,
+                  size: 22, color: AppColors.primary),
+            ),
+            if (count > 0)
+              Positioned(
+                top: 1,
+                right: 1,
+                child: Container(
+                  constraints:
+                      const BoxConstraints(minWidth: 14, minHeight: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.error,
+                    borderRadius:
+                        BorderRadius.circular(AppDimensions.radiusFull),
+                    border:
+                        Border.all(color: AppColors.background, width: 1.5),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(count > 9 ? '9+' : '$count',
+                      style: AppTextStyles.caption.copyWith(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                      )),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Quick actions ────────────────────────────────────────────────────────────
+/// The two things a worker starts a visit with: adding a new child, or pulling
+/// up one who already has a code.
+class _QuickActions extends StatelessWidget {
+  final VoidCallback onRegister;
+  final VoidCallback onScan;
+
+  const _QuickActions({required this.onRegister, required this.onScan});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 32,
-      height: 32,
-      child: Stack(
-        children: [
-          const Center(
-            child: Icon(Icons.notifications_none_rounded,
-                size: 22, color: AppColors.primary),
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: _ActionTile(
+            icon: Icons.person_add_alt_1_rounded,
+            label: 'Register a child',
+            hint: 'New to the register',
+            primary: true,
+            onTap: onRegister,
           ),
-          Positioned(
-            top: 1,
-            right: 1,
-            child: Container(
-              width: 14,
-              height: 14,
+        ),
+        const SizedBox(width: AppDimensions.spaceSM),
+        Expanded(
+          flex: 2,
+          child: _ActionTile(
+            icon: Icons.qr_code_scanner_rounded,
+            label: 'Scan code',
+            hint: 'Find a record',
+            primary: false,
+            onTap: onScan,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String hint;
+  final bool primary;
+  final VoidCallback onTap;
+
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.hint,
+    required this.primary,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = primary ? AppColors.textOnPrimary : AppColors.primary;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(AppDimensions.cardPaddingSm),
+        decoration: BoxDecoration(
+          color: primary ? AppColors.primary : AppColors.cardBackground,
+          gradient: primary ? AppColors.primaryGradient : null,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusLG),
+          border: Border.all(
+            color: primary
+                ? Colors.transparent
+                : AppColors.primary.withValues(alpha: 0.22),
+            width: AppDimensions.borderNormal,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: AppColors.error,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.background, width: 1.5),
+                color: primary
+                    ? Colors.white.withValues(alpha: 0.18)
+                    : AppColors.primarySurface,
+                borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
               ),
-              alignment: Alignment.center,
-              child: Text('$count',
-                  style: AppTextStyles.caption.copyWith(
-                    color: Colors.white,
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
-                  )),
+              child: Icon(icon, size: 16, color: fg),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.h4.copyWith(color: fg)),
+                  Text(hint,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.captionMuted.copyWith(
+                        color: primary
+                            ? Colors.white.withValues(alpha: 0.75)
+                            : AppColors.textTertiary,
+                        fontSize: 10,
+                      )),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

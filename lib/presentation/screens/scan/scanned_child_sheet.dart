@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/id_gen.dart';
 import '../../../data/models/child_model.dart';
 import '../../../data/models/vaccination_record.dart';
+import '../../widgets/common/qr_full_screen.dart';
 import '../visits/visits_screen.dart' show priorityHue;
 import 'medical_history_sheet.dart';
 import 'record_vaccination_sheet.dart';
@@ -246,21 +248,11 @@ class _ScannedChildSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   // QR options
-                  Row(
-                    children: const [
-                      Expanded(
-                          child: _MiniAction(
-                              icon: Icons.file_download_outlined,
-                              label: 'Save')),
-                      SizedBox(width: 6),
-                      Expanded(
-                          child: _MiniAction(
-                              icon: Icons.share_outlined, label: 'Share')),
-                      SizedBox(width: 6),
-                      Expanded(
-                          child: _MiniAction(
-                              icon: Icons.print_outlined, label: 'Print')),
-                    ],
+                  QrActionsRow(
+                    payload: IdGen.qrPayload(child.code),
+                    code: child.code,
+                    title: child.name,
+                    subtitle: '${child.ageLabel} · ${child.currentLocation}',
                   ),
                 ],
               ),
@@ -390,35 +382,6 @@ class _Row extends StatelessWidget {
   }
 }
 
-class _MiniAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _MiniAction({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 38,
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
-        border: Border.all(color: AppColors.borderMedium, width: 1),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 14, color: AppColors.primary),
-          const SizedBox(width: 5),
-          Text(label,
-              style: AppTextStyles.caption.copyWith(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
-              )),
-        ],
-      ),
-    );
-  }
-}
 
 class _BarButton extends StatelessWidget {
   final String label;

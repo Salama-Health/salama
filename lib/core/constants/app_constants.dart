@@ -33,4 +33,12 @@ class AppConstants {
 
   // Poweredby
   static const String poweredBy = 'celo';
+
+  // ── Build info ──
+  static const String appVersion = '1.0.0';
+  static const String buildNumber = '1';
+
+  // ── Support ──
+  static const String supportEmail = 'support@salamahealth.org';
+  static const String supportPhone = '+211 920 000 000';
 }

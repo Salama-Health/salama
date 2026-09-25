@@ -5,8 +5,12 @@ import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/child_model.dart';
 import '../../providers/data_providers.dart';
+import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/brand_header.dart';
+import '../../widgets/common/app_text_field.dart';
+import '../../widgets/common/offline_banner.dart';
+import '../children/register_child_screen.dart';
 import '../scan/child_detail_sheet.dart';
 import 'route_plan_sheet.dart';
 
@@ -52,6 +56,14 @@ class VisitsScreen extends ConsumerStatefulWidget {
 class _VisitsScreenState extends ConsumerState<VisitsScreen> {
   int _tab = 0; // 0 To visit · 1 Visited · 2 All
   RiskBand? _priority; // null = all priorities
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   static const _priorityChips = [
     (null, 'All'),
@@ -70,7 +82,8 @@ class _VisitsScreenState extends ConsumerState<VisitsScreen> {
     if (_priority != null) {
       list = list.where((c) => c.riskBand == _priority);
     }
-    final sorted = list.toList()
+    final searched = searchChildren(list.toList(), _query);
+    final sorted = searched.toList()
       ..sort((a, b) => b.riskScore.compareTo(a.riskScore));
     return sorted;
   }
@@ -96,6 +109,7 @@ class _VisitsScreenState extends ConsumerState<VisitsScreen> {
           bottom: false,
           child: BrandHeader(trailing: ConnectionPill()),
         ),
+        const OfflineBanner(),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
@@ -120,6 +134,12 @@ class _VisitsScreenState extends ConsumerState<VisitsScreen> {
                 ),
                 const SizedBox(height: AppDimensions.spaceSM),
                 _RouteActions(onOpen: () => showRoutePlanSheet(context)),
+                const SizedBox(height: AppDimensions.spaceMD),
+                AppSearchField(
+                  controller: _search,
+                  hint: 'Search name, code, village or caregiver',
+                  onChanged: (v) => setState(() => _query = v),
+                ),
                 const SizedBox(height: AppDimensions.spaceMD),
                 Row(
                   children: [
@@ -175,7 +195,7 @@ class _VisitsScreenState extends ConsumerState<VisitsScreen> {
                       message: '$e',
                       onRetry: () => ref.invalidate(childrenProvider)),
                   data: (_) => list.isEmpty
-                      ? _EmptyState()
+                      ? _EmptyState(searching: _query.trim().isNotEmpty)
                       : Column(
                           children: list
                               .map((c) => Padding(
@@ -562,21 +582,48 @@ class _VaccineTag extends StatelessWidget {
 
 // ── Empty / error states ─────────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
+  /// True when the list is empty because of a search, not because the caseload
+  /// is empty — the way out of each is different.
+  final bool searching;
+  const _EmptyState({this.searching = false});
+
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      padding: const EdgeInsets.symmetric(vertical: 28),
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
       child: Column(
         children: [
-          Icon(Icons.inbox_rounded,
+          Icon(searching ? Icons.search_off_rounded : Icons.inbox_rounded,
               size: 32, color: AppColors.textTertiary.withValues(alpha: 0.6)),
           const SizedBox(height: 8),
-          Text('No children match this filter',
+          Text(
+              searching
+                  ? 'No one matches that search'
+                  : 'No children match this filter',
               style: AppTextStyles.h4
                   .copyWith(color: AppColors.textSecondary)),
           const SizedBox(height: 2),
-          Text('Try a different priority or tab',
+          Text(
+              searching
+                  ? 'Try part of a name, a village, or the register code'
+                  : 'Try a different priority or tab',
+              textAlign: TextAlign.center,
               style: AppTextStyles.captionMuted),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: 210,
+            child: AppButton(
+              label: 'Register a child',
+              variant: AppButtonVariant.outline,
+              icon: Icons.person_add_alt_1_outlined,
+              small: true,
+              height: 38,
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const RegisterChildScreen()),
+              ),
+            ),
+          ),
         ],
       ),
     );

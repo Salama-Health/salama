@@ -7,6 +7,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/child_model.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/data_providers.dart';
+import '../../widgets/common/app_text_field.dart';
 
 /// Full-screen live QR scanner. Pops with the resolved [ChildModel] (or null).
 class QrScannerScreen extends ConsumerStatefulWidget {
@@ -63,9 +64,17 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   }
 
   Future<void> _manualEntry() async {
-    final children = ref.read(childrenProvider).valueOrNull ?? const [];
+    // Prefer whatever is loaded; fall back to the cached caseload so the
+    // manual route still works with no signal — which is exactly when a
+    // scanner failure is most likely to strand a worker.
+    var children =
+        ref.read(childrenProvider).valueOrNull ?? const <ChildModel>[];
+    if (children.isEmpty) {
+      children = ref.read(childrenRepositoryProvider).cachedList();
+    }
     final child = await showModalBottomSheet<ChildModel>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (_) => _ManualEntrySheet(children: children),
@@ -284,105 +293,170 @@ class _ScannerOverlayPainter extends CustomPainter {
 }
 
 // ── Manual entry sheet ───────────────────────────────────────────────────
-class _ManualEntrySheet extends StatelessWidget {
+/// The fallback when a code will not scan — a smudged card, a cracked lens, a
+/// caregiver who left the card at home. Searches by name, code, village or
+/// caregiver, so a child can always be found by something the caregiver knows.
+class _ManualEntrySheet extends StatefulWidget {
   final List<ChildModel> children;
   const _ManualEntrySheet({required this.children});
 
   @override
+  State<_ManualEntrySheet> createState() => _ManualEntrySheetState();
+}
+
+class _ManualEntrySheetState extends State<_ManualEntrySheet> {
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    return Container(
-      constraints: BoxConstraints(maxHeight: mq.size.height * 0.7),
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.vertical(
-            top: Radius.circular(AppDimensions.radiusXL)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 6),
-              width: 36,
-              height: 3,
-              decoration: BoxDecoration(
-                color: AppColors.borderMedium,
-                borderRadius:
-                    BorderRadius.circular(AppDimensions.radiusFull),
+    final results = searchChildren(widget.children, _query);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+      child: Container(
+        constraints: BoxConstraints(maxHeight: mq.size.height * 0.8),
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppDimensions.radiusXL)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 6),
+                width: 36,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: AppColors.borderMedium,
+                  borderRadius:
+                      BorderRadius.circular(AppDimensions.radiusFull),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  AppDimensions.spaceMD, 2, AppDimensions.spaceMD, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Select a child', style: AppTextStyles.h3),
-                  Text('Pick the child whose card you are scanning',
-                      style: AppTextStyles.captionMuted),
-                ],
-              ),
-            ),
-            const Divider(
-                height: 1, thickness: 1, color: AppColors.borderLight),
-            Flexible(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(AppDimensions.spaceMD),
-                shrinkWrap: true,
-                itemCount: children.length,
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: 6),
-                itemBuilder: (context, i) {
-                  final c = children[i];
-                  return GestureDetector(
-                    onTap: () => Navigator.pop(context, c),
-                    child: Container(
-                      padding: const EdgeInsets.all(
-                          AppDimensions.cardPaddingSm),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBackground,
-                        borderRadius: BorderRadius.circular(
-                            AppDimensions.radiusMD),
-                        border: Border.all(
-                            color: AppColors.borderLight, width: 1),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary
-                                  .withValues(alpha: 0.12),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.child_care_rounded,
-                                color: AppColors.primary, size: 18),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text(c.name, style: AppTextStyles.h4),
-                                Text('${c.code} • ${c.ageLabel}',
-                                    style: AppTextStyles.captionMuted),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded,
-                              size: 18, color: AppColors.textTertiary),
-                        ],
-                      ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppDimensions.spaceMD, 2, AppDimensions.spaceMD, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Find a child', style: AppTextStyles.h3),
+                    Text(
+                      widget.children.isEmpty
+                          ? 'No children saved on this phone yet'
+                          : 'Search ${widget.children.length} children in your caseload',
+                      style: AppTextStyles.captionMuted,
                     ),
-                  );
-                },
+                    const SizedBox(height: 9),
+                    AppSearchField(
+                      controller: _search,
+                      hint: 'Name, code, village or caregiver',
+                      onChanged: (v) => setState(() => _query = v),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const Divider(
+                  height: 1, thickness: 1, color: AppColors.borderLight),
+              Flexible(
+                child: results.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
+                        child: Column(
+                          children: [
+                            Icon(
+                              widget.children.isEmpty
+                                  ? Icons.cloud_off_rounded
+                                  : Icons.search_off_rounded,
+                              size: 28,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.children.isEmpty
+                                  ? 'Sync once to load your caseload'
+                                  : 'Nobody matches that search',
+                              style: AppTextStyles.h4,
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(AppDimensions.spaceMD),
+                        shrinkWrap: true,
+                        itemCount: results.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 6),
+                        itemBuilder: (context, i) {
+                          final c = results[i];
+                          return GestureDetector(
+                            onTap: () => Navigator.pop(context, c),
+                            behavior: HitTestBehavior.opaque,
+                            child: Container(
+                              padding: const EdgeInsets.all(
+                                  AppDimensions.cardPaddingSm),
+                              decoration: BoxDecoration(
+                                color: AppColors.cardBackground,
+                                borderRadius: BorderRadius.circular(
+                                    AppDimensions.radiusMD),
+                                border: Border.all(
+                                    color: AppColors.borderLight, width: 1),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary
+                                          .withValues(alpha: 0.12),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                        Icons.child_care_rounded,
+                                        color: AppColors.primary,
+                                        size: 18),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(c.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: AppTextStyles.h4),
+                                        Text(
+                                            '${c.code} • ${c.ageLabel} • ${c.currentLocation}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style:
+                                                AppTextStyles.captionMuted),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right_rounded,
+                                      size: 18,
+                                      color: AppColors.textTertiary),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
+import '../profile/settings_sheets.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -162,7 +163,7 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                       const SizedBox(height: 12),
                       GestureDetector(
-                        onTap: () {},
+                        onTap: () => showAboutAppSheet(context),
                         child: Padding(
                           padding:
                               const EdgeInsets.symmetric(vertical: 4),

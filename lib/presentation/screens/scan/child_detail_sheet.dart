@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
@@ -263,8 +264,23 @@ class _ParentCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                // Placing a call needs the dialer, which this build does not
+                // open; copying the number is the honest equivalent.
                 GestureDetector(
-                  onTap: () {},
+                  onTap: () async {
+                    await Clipboard.setData(
+                        ClipboardData(text: child.parentPhone!));
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            'Copied ${child.parentPhone} — paste it into your dialler.'),
+                        backgroundColor: AppColors.primary,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  behavior: HitTestBehavior.opaque,
                   child: Container(
                     width: 34,
                     height: 34,
@@ -273,8 +289,8 @@ class _ParentCard extends StatelessWidget {
                       borderRadius:
                           BorderRadius.circular(AppDimensions.radiusSM),
                     ),
-                    child: const Icon(Icons.call_rounded,
-                        color: Colors.white, size: 16),
+                    child: const Icon(Icons.content_copy_rounded,
+                        color: Colors.white, size: 15),
                   ),
                 ),
               ],

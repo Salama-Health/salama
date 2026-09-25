@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/api/api_exception.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
@@ -91,6 +92,9 @@ class _RecordVaccinationSheetState
     final online = ConnectivityService.instance.isOnline.value;
     final clientUuid =
         '${child.id}-$_vaccine-${DateTime.now().millisecondsSinceEpoch}';
+    // Set to false if the dose ends up in the offline queue instead of
+    // reaching the server, so the confirmation tells the truth.
+    var reachedServer = online;
     try {
       if (online) {
         await ref.read(vaccinationsRepositoryProvider).record(
@@ -115,15 +119,51 @@ class _RecordVaccinationSheetState
       ref.invalidate(childDetailProvider(child.id));
       ref.invalidate(activityProvider);
       ref.invalidate(syncStatusProvider);
+      ref.invalidate(alertsProvider);
 
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(online
+          content: Text(reachedServer
               ? '$_vaccine recorded for ${child.name}'
               : '$_vaccine saved offline — will sync later'),
-          backgroundColor: online ? AppColors.success : AppColors.warning,
+          backgroundColor:
+              reachedServer ? AppColors.success : AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!e.isNetwork) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not save: ${e.message}'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      // The connection dropped mid-save. A recorded dose is not something to
+      // lose to a dropped bar of signal — queue it and tell the worker.
+      reachedServer = false;
+      await ref.read(syncRepositoryProvider).queueVaccination({
+        'childId': child.id,
+        'vaccine': _vaccine,
+        'status': 'given',
+        'batchNumber': batch.isEmpty ? null : batch,
+        'dateGiven': _date.toUtc().toIso8601String(),
+        'clientUuid': clientUuid,
+      });
+      ref.invalidate(syncStatusProvider);
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$_vaccine saved on this phone — will sync later'),
+          backgroundColor: AppColors.warning,
           behavior: SnackBarBehavior.floating,
         ),
       );

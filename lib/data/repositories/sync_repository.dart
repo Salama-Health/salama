@@ -3,16 +3,19 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/api/api_exception.dart';
+import '../../core/storage/offline_cache.dart';
 import '../models/sync_models.dart';
 
 /// Offline-first sync. Actions recorded while offline are queued locally and
 /// flushed to POST /sync/upload. Every queued item carries a clientUuid so the
 /// server de-duplicates re-uploads.
 class SyncRepository {
-  SyncRepository(this._api, this._prefs);
+  SyncRepository(this._api, this._prefs, this._cache);
 
   final ApiClient _api;
   final SharedPreferences _prefs;
+  final OfflineCache _cache;
 
   static const _kVaccinations = 'queue_vaccinations';
   static const _kChildren = 'queue_children';
@@ -36,7 +39,11 @@ class SyncRepository {
   List<Map<String, dynamic>> _read(String key) {
     final raw = _prefs.getString(key);
     if (raw == null || raw.isEmpty) return [];
-    return (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    try {
+      return (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
   }
 
   int get pendingCount =>
@@ -44,15 +51,42 @@ class SyncRepository {
       _read(_kChildren).length +
       _read(_kVisits).length;
 
+  /// Per-type counts for the sync sheet — a worker should be able to see
+  /// exactly what is still sitting on the phone.
+  ({int vaccinations, int children, int visits}) get pendingBreakdown => (
+        vaccinations: _read(_kVaccinations).length,
+        children: _read(_kChildren).length,
+        visits: _read(_kVisits).length,
+      );
+
+  /// Children registered offline and not yet uploaded, newest first.
+  List<Map<String, dynamic>> get queuedChildren =>
+      _read(_kChildren).reversed.toList();
+
   // ── server status ──────────────────────────────────────────────────────────
+  /// Never throws on a network failure. The pending count lives on this device,
+  /// so it must stay visible precisely when the server cannot be reached —
+  /// otherwise the app reports "0 waiting" at the moment work is piling up.
   Future<SyncStatus> status() async {
-    final resp = await _api.get('/sync/status');
-    final server = SyncStatus.fromJson(resp.data as Map<String, dynamic>);
-    // Surface local pending count on top of the server's bookkeeping.
-    return SyncStatus(
-      lastSync: server.lastSync,
-      pendingRecords: server.pendingRecords + pendingCount,
-    );
+    try {
+      final resp = await _api.get('/sync/status');
+      final server = SyncStatus.fromJson(resp.data as Map<String, dynamic>);
+      if (server.lastSync != null) {
+        await _cache.write(
+            OfflineCache.kLastSync, server.lastSync!.toIso8601String());
+      }
+      return SyncStatus(
+        lastSync: server.lastSync,
+        pendingRecords: server.pendingRecords + pendingCount,
+      );
+    } on ApiException catch (e) {
+      if (!e.isNetwork) rethrow;
+      final cached = _cache.read(OfflineCache.kLastSync);
+      return SyncStatus(
+        lastSync: cached is String ? DateTime.tryParse(cached) : null,
+        pendingRecords: pendingCount,
+      );
+    }
   }
 
   /// Flush queued actions to the server. Clears the queue on success.
@@ -70,6 +104,8 @@ class SyncRepository {
     await _prefs.remove(_kVaccinations);
     await _prefs.remove(_kChildren);
     await _prefs.remove(_kVisits);
+    await _cache.write(
+        OfflineCache.kLastSync, DateTime.now().toIso8601String());
 
     return SyncResult.fromJson(resp.data as Map<String, dynamic>);
   }

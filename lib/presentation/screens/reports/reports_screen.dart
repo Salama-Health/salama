@@ -5,10 +5,13 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/report_models.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/data_providers.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_card.dart';
 import '../../widgets/common/brand_header.dart';
+import '../../widgets/common/offline_banner.dart';
+import 'export_report_sheet.dart';
 
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
@@ -23,6 +26,7 @@ class ReportsScreen extends ConsumerWidget {
           bottom: false,
           child: BrandHeader(trailing: ConnectionPill()),
         ),
+        const OfflineBanner(),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
@@ -132,13 +136,15 @@ class _ReportsBody extends StatelessWidget {
         const SizedBox(height: AppDimensions.spaceSM),
         _CoverageCard(rows: bundle.coverage),
         const SizedBox(height: AppDimensions.spaceMD),
-        Builder(
-          builder: (context) => AppButton(
+        Consumer(
+          builder: (context, ref, _) => AppButton(
             label: 'Export monthly report',
             icon: Icons.file_download_outlined,
             height: 44,
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Export will be available soon')),
+            onPressed: () => showExportReportSheet(
+              context,
+              bundle: bundle,
+              worker: ref.read(currentWorkerProvider),
             ),
           ),
         ),
