@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../data/models/alert_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/data_providers.dart';
@@ -23,21 +25,33 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with WidgetsBindingObserver {
   int _index = 0;
   bool _syncing = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    NotificationService.instance.setForeground(true);
     ConnectivityService.instance.isOnline.addListener(_onConnectivityChanged);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ConnectivityService.instance.isOnline
         .removeListener(_onConnectivityChanged);
     super.dispose();
+  }
+
+  /// A confirmation belongs on screen when the worker is looking at it, and in
+  /// the tray only when they are not.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    NotificationService.instance
+        .setForeground(state == AppLifecycleState.resumed);
   }
 
   /// When a connection returns, refresh what was stale and push up anything
@@ -70,8 +84,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.invalidate(childrenProvider);
       ref.invalidate(activityProvider);
       ref.invalidate(alertsProvider);
-      if (!mounted || result.totalSaved == 0) return;
-      if (!settings.syncNotifications) return;
+      // The queue has drained, so the standing "waiting to sync" notification
+      // is no longer true.
+      unawaited(NotificationService.instance.outboxPending(repo.pendingCount));
+      if (result.totalSaved == 0) return;
+
+      // In the tray only if the worker was not watching; on screen if they
+      // were. Never both.
+      unawaited(NotificationService.instance.syncCompleted(
+        result.totalSaved,
+        enabled: settings.syncNotifications,
+      ));
+      if (!mounted || !settings.syncNotifications) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -95,6 +119,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The alerts feed is the one source of truth for what is worth telling a
+    // worker. The service keeps its own record of what it has already
+    // announced, so this cannot notify twice for the same alert, and several
+    // arriving together collapse into one summary.
+    ref.listen<AsyncValue<List<AlertModel>>>(alertsProvider, (_, next) {
+      final alerts = next.valueOrNull;
+      if (alerts == null || alerts.isEmpty) return;
+      final read = ref.read(alertsRepositoryProvider).readIds;
+      unawaited(NotificationService.instance.alertsRaised(
+        alerts.where((a) => !read.contains(a.id)).toList(),
+        enabled: ref.read(settingsProvider).alertNotifications,
+      ));
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: IndexedStack(

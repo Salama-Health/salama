@@ -136,10 +136,23 @@ class _RecordVaccinationSheetState
     // Confirm the dose on the device. Deliberately not awaited and never
     // allowed to throw: a notification is a confirmation of work already
     // done, so it must not delay the sheet closing or fail the save.
+    //
+    // The service drops this while the app is on screen — the snackbar below
+    // is already saying it, and a duplicate in the tray is how a worker learns
+    // to ignore the channel that later carries a cold-chain warning.
+    final notify = ref.read(settingsProvider).syncNotifications;
     unawaited(NotificationService.instance.doseRecorded(
       childName: child.name,
       vaccine: vaccine,
       pending: !result.synced,
+      enabled: notify,
+    ));
+
+    // One standing notification for everything still queued, replaced in
+    // place — not one per record.
+    unawaited(NotificationService.instance.outboxPending(
+      ref.read(syncRepositoryProvider).pendingCount,
+      enabled: ref.read(settingsProvider).alertNotifications,
     ));
 
     if (!mounted) return;

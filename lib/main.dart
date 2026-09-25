@@ -23,12 +23,15 @@ Future<void> main() async {
     statusBarIconBrightness: Brightness.dark,
   ));
   ConnectivityService.instance.init();
-  // Asks for the notification permission on Android 13+. Not awaited:
-  // a worker should never wait on a permission dialog to reach the
-  // login screen, and a refusal only means no confirmations.
-  NotificationService.instance.init();
 
   final prefs = await SharedPreferences.getInstance();
+
+  // Asks for the notification permission on Android 13+. Not awaited:
+  // a worker should never wait on a permission dialog to reach the
+  // login screen, and a refusal only means no confirmations. Prefs are
+  // passed so the record of what has already been announced survives a
+  // restart and nothing announces itself twice.
+  NotificationService.instance.init(prefs);
 
   runApp(
     ProviderScope(
