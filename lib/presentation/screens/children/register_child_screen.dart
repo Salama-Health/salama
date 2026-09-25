@@ -11,6 +11,7 @@ import '../../../core/utils/id_gen.dart';
 import '../../../core/utils/immunization_schedule.dart';
 import '../../../data/models/child_model.dart';
 import '../../../data/models/facility_model.dart';
+import '../../../data/repositories/consent_log_repository.dart';
 import '../../../data/repositories/outbox_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/core_providers.dart';
@@ -225,6 +226,19 @@ class _RegisterChildScreenState extends ConsumerState<RegisterChildScreen> {
       'registeredBy': worker?.workerId,
       'registeredAt': now.toIso8601String(),
     };
+
+    // Record the consent locally first. The server accepts consentGiven and
+    // consentAt but does not store them yet, and the outbox discards a payload
+    // once it is accepted — so this is the only lasting evidence until it does.
+    await ref.read(consentLogRepositoryProvider).record(
+          ConsentRecord(
+            childCode: code,
+            childName: _name.text.trim(),
+            caregiverName: _caregiver.text.trim(),
+            workerId: worker?.workerId,
+            consentAt: now,
+          ),
+        );
 
     // One call covers both paths: sent if the network allows, durably queued
     // if not. Only a rejection from the server surfaces as an error.

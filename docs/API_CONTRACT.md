@@ -4,8 +4,10 @@ What the mobile app sends and what it expects back. Every field listed here is
 read by the Flutter client today; anything the app can live without is marked
 **optional**, and the app's fallback is stated.
 
-- Base URL is compiled in: `--dart-define=API_BASE_URL=https://api.example.org`
-  (default `http://54.205.9.90`).
+- Base URL is compiled in: `--dart-define=API_BASE_URL=...`
+  (default `https://salamahealth.duckdns.org`, TLS via Let's Encrypt). Plain
+  HTTP 308-redirects to HTTPS, and the app permits cleartext only to loopback
+  hosts for local development.
 - All requests except login and refresh carry `Authorization: Bearer <accessToken>`.
 - Errors should return `{"detail": "human readable message"}`; the app shows
   `detail` verbatim, so write it for a health worker, not a developer.
@@ -69,7 +71,10 @@ worker out of the device.
 > failure (timeout, 500, no connection) keeps the session and falls back to the
 > cached profile. Do not return 401 for transient server problems.
 
-### POST `/auth/change-pin` *(new — Security screen)*
+### POST `/auth/change-pin` — **not deployed yet**
+A `404` is reported to the worker as "not available on the server yet, ask your
+supervisor to reset it", rather than as a wrong PIN.
+
 ```json
 { "currentPin": "1234", "newPin": "8391" }
 ```
@@ -108,14 +113,30 @@ worker's caseload as an array.
 }]
 ```
 
-**Risk bands** are derived client-side from `riskScore`: `>= 0.90` high,
-`>= 0.80` elevated, `>= 0.72` watch, below that routine. Keep the scale 0–1.
+**Risk bands.** Send `riskBand` (`High` | `Medium` | `Watch` | `Low`) and the app
+uses it directly. When it is absent the app derives one from `riskScore` using
+the cut-offs fitted to the live distribution on 25 Sep 2026:
+
+| Band | Score |
+|---|---|
+| High | ≥ 0.193 |
+| Medium | ≥ 0.068 |
+| Watch | ≥ 0.022 |
+| Low | < 0.022 |
+
+The index is soft-capped, normalised and multiplicative, so scores cluster low —
+p90 is 0.193, not 0.90. These split the caseload roughly 10/20/30/40 percent.
+The app's display wording (High priority / Elevated / Watch / Routine) is a
+presentation layer over the same four bands.
 
 **`riskPending`** (optional, default false): true means the model has not scored
 this child yet, and the app shows "Awaiting score" instead of a band. Omitting
-`riskScore` entirely has the same effect. The app sets this itself on a child
-registered offline, and your response replaces it once the child syncs — so a
-registration must come back from the server **with a real score**, not a zero.
+`riskScore` entirely has the same effect.
+
+**A `riskScore` of exactly `0.0` is a real result**, not a missing one — the index
+is multiplicative, so a child with no vaccination debt scores zero, meaning fully
+up to date. The app treats 0.0 as a genuine Low band; only an absent score counts
+as unscored. About 11% of children are legitimately at zero.
 
 `history[].status` is `given` | `due` | `missed`. `history` is **optional** here
 (the list view does not need it) but must be present on the detail endpoint.
@@ -169,6 +190,15 @@ Notes for the backend:
   `consentAt` — it is the record that consent was taken before registration.
 - Response is a full child object (as in GET `/children`).
 
+> **Currently accepted and discarded** (25 Sep): `consentGiven`, `consentAt`,
+> `bornDateEstimated`, `dueVaccines`, `notes`, `registeredBy`, `registeredAt`.
+> The app keeps sending them so nothing changes here when storage lands. Until
+> it does, **a 200 from this endpoint is not evidence that consent was
+> recorded** — the app keeps its own local consent log
+> (`ConsentLogRepository`, exportable as CSV from App settings) so registrations
+> made in the meantime can be reconciled rather than left unattested.
+> `site` on `POST /vaccinations` is dropped the same way.
+
 ### PATCH `/children/{id}`
 Partial update, same field names. Currently unused by the UI but wired.
 
@@ -207,9 +237,11 @@ one handler serves both paths.
 
 ## 3b. Visits *(new)*
 
-### POST `/visits`
-Sent as each stop of a route is completed. Previously a visit could only reach
-the server inside a sync batch, even with a live connection.
+### POST `/visits` — **not deployed yet**
+Sent as each stop of a route is completed. Until the route exists, a `404`/`405`
+is treated as "not built" rather than a refusal: the visit goes to the outbox and
+reaches the server in `visits[]` on `/sync/upload`. Nothing in the app needs to
+change when it lands.
 
 ```json
 {
@@ -247,7 +279,8 @@ the server inside a sync batch, even with a live connection.
   "highPriority": 38,
   "dueSoon": 91,
   "recentlyVisited": 26,
-  "assigned": true
+  "assigned": true,
+  "sarObservedAt": "2026-09-25"
 }]
 ```
 
@@ -257,6 +290,13 @@ the server inside a sync batch, even with a live connection.
   as a general climate alert.
 - `county` and `state` are joined for display.
 - `daysToWindow` `0` means the disruption is already active.
+- `sarObservedAt` (optional) is the date of the satellite radar pass behind the
+  score. **Null means the score came from seasonal estimates rather than an
+  actual pass**, which is materially weaker evidence — the facility sheet says
+  "Seasonal estimate — no radar pass" so a worker moving a vaccine run knows
+  what they are acting on.
+- `state` comes back as `"Unity"`, not `"Unity State"`; the app joins county and
+  state for display either way.
 
 ### GET `/facilities/{id}`
 Same object. Fetched when a facility's detail sheet opens, because the CDI score
@@ -385,9 +425,9 @@ Rules that matter to the client:
 
 ## 9. Alerts *(new — optional)*
 
-### GET `/alerts`
-If this endpoint exists and returns a non-empty array, it drives the Alerts
-screen and the bell badge. If it 404s or fails, the app derives alerts on-device
+### GET `/devices/alerts`
+Currently served under `/devices`; the client points there. If it returns a
+non-empty array it drives the Alerts screen and the bell badge. If it 404s or fails, the app derives alerts on-device
 from facility risk, overdue children and the offline queue — so shipping it is
 an upgrade, not a prerequisite.
 

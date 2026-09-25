@@ -8,6 +8,7 @@ import '../../data/repositories/activity_repository.dart';
 import '../../data/repositories/alerts_repository.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/children_repository.dart';
+import '../../data/repositories/consent_log_repository.dart';
 import '../../data/repositories/facilities_repository.dart';
 import '../../data/repositories/outbox_repository.dart';
 import '../../data/repositories/reports_repository.dart';
@@ -100,6 +101,11 @@ final alertsRepositoryProvider = Provider(
     ref.watch(offlineCacheProvider),
   ),
 );
+
+/// Local attestation that consent was taken, kept because the server does not
+/// store it yet.
+final consentLogRepositoryProvider =
+    Provider((ref) => ConsentLogRepository(ref.watch(sharedPrefsProvider)));
 
 final settingsRepositoryProvider =
     Provider((ref) => SettingsRepository(ref.watch(sharedPrefsProvider)));

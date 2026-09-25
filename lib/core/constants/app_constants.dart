@@ -13,12 +13,13 @@ class AppConstants {
   static const String landingBg = 'assets/landing_screen_bg.png';
 
   // ── Backend API ──
-  // Defaults to the deployed EC2 server. Override at build time, e.g.:
-  //   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000   (local backend)
-  //   flutter run --dart-define=API_BASE_URL=https://api.yourdomain (after TLS)
+  // Production, over TLS (Let's Encrypt). Plain HTTP 308-redirects here, and
+  // Android trusts the chain, so no cleartext exception is needed.
+  // Override at build time for a local backend:
+  //   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://54.205.9.90',
+    defaultValue: 'https://salamahealth.duckdns.org',
   );
 
   // Route names

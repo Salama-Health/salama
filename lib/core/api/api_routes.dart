@@ -25,6 +25,9 @@ class ApiRoutes {
   static const String vaccinations = '/vaccinations';
 
   // ── Visits ─────────────────────────────────────────────────────────────────
+  // Not deployed yet. Until it is, a 404/405 here is treated as "not built"
+  // and the visit goes to the outbox, reaching the server in visits[] on
+  // /sync/upload. Nothing changes in the app when it does land.
   static const String visits = '/visits';
 
   // ── Facilities ─────────────────────────────────────────────────────────────
@@ -47,5 +50,7 @@ class ApiRoutes {
   static const String syncUpload = '/sync/upload';
 
   // ── Alerts ─────────────────────────────────────────────────────────────────
-  static const String alerts = '/alerts';
+  // Served under /devices for now; the app falls back to on-device derivation
+  // if this 404s, so moving it to /alerts later needs only this line.
+  static const String alerts = '/devices/alerts';
 }

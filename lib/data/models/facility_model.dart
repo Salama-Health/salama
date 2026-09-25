@@ -39,6 +39,11 @@ class FacilityModel {
   final int recentlyVisited;
   final bool assigned;
 
+  /// When the satellite radar behind the CDI was observed. Null means the score
+  /// came from seasonal estimates rather than an actual pass — materially
+  /// weaker evidence, so the app says so instead of presenting it as measured.
+  final DateTime? sarObservedAt;
+
   const FacilityModel({
     this.id = '',
     required this.name,
@@ -54,7 +59,19 @@ class FacilityModel {
     required this.dueSoon,
     required this.recentlyVisited,
     this.assigned = false,
+    this.sarObservedAt,
   });
+
+  /// "observed today" / "radar 3 days old" / "seasonal estimate".
+  String get cdiSourceLabel {
+    if (sarObservedAt == null) return 'Seasonal estimate — no radar pass';
+    final days = DateTime.now().difference(sarObservedAt!).inDays;
+    if (days <= 0) return 'Radar observed today';
+    if (days == 1) return 'Radar observed yesterday';
+    return 'Radar observed $days days ago';
+  }
+
+  bool get cdiFromRadar => sarObservedAt != null;
 
   /// Backend returns the 4-level CDI band (Low/Medium/High/Critical); map it to
   /// the app's 3-level visual risk enum.
@@ -88,6 +105,9 @@ class FacilityModel {
       dueSoon: (json['dueSoon'] as num?)?.toInt() ?? 0,
       recentlyVisited: (json['recentlyVisited'] as num?)?.toInt() ?? 0,
       assigned: json['assigned'] as bool? ?? false,
+      sarObservedAt: json['sarObservedAt'] != null
+          ? DateTime.tryParse(json['sarObservedAt'].toString())
+          : null,
     );
   }
 }

@@ -145,7 +145,12 @@ class _SecuritySheetState extends ConsumerState<_SecuritySheet> {
     } on ApiException catch (e) {
       setState(() {
         _saving = false;
-        _error = e.message;
+        // The endpoint is still being built; a 404 here is not the worker
+        // getting their own PIN wrong.
+        _error = e.statusCode == 404
+            ? 'Changing your PIN is not available on the server yet. '
+                'Ask your supervisor to reset it.'
+            : e.message;
       });
     } catch (e) {
       setState(() {
@@ -466,6 +471,7 @@ class _AppSettingsSheetState extends ConsumerState<_AppSettingsSheet> {
   @override
   Widget build(BuildContext context) {
     final cache = ref.watch(offlineCacheProvider);
+    final consent = ref.watch(consentLogRepositoryProvider);
     final pending = ref.watch(syncRepositoryProvider).pendingCount;
     final size = cache.approxSizeKb;
 
@@ -486,6 +492,33 @@ class _AppSettingsSheetState extends ConsumerState<_AppSettingsSheet> {
               cache.savedAtLabel('children') ?? 'never',
             ),
           ]),
+          const SizedBox(height: AppDimensions.spaceMD),
+          const SheetSectionLabel('Consent records'),
+          _InfoGroup(rows: [
+            ('Registrations with consent recorded', '${consent.count}'),
+          ]),
+          const SizedBox(height: 6),
+          _Note(
+            icon: Icons.assignment_outlined,
+            text: 'Consent is held on this phone. The server does not store it '
+                'yet, so export this log if the device is being replaced.',
+          ),
+          const SizedBox(height: 6),
+          AppButton(
+            label: 'Export consent log',
+            variant: AppButtonVariant.outline,
+            icon: Icons.copy_rounded,
+            height: 42,
+            onPressed: consent.count == 0
+                ? null
+                : () async {
+                    await Clipboard.setData(
+                        ClipboardData(text: consent.toCsv()));
+                    if (!context.mounted) return;
+                    _toast(context,
+                        '${consent.count} consent records copied as CSV');
+                  },
+          ),
           const SizedBox(height: AppDimensions.spaceMD),
           const SheetSectionLabel('Connection'),
           _InfoGroup(rows: [

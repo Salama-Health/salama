@@ -30,6 +30,11 @@ class ChildModel {
   /// rather than presenting a band it has not been given.
   final bool riskPending;
 
+  /// The band the server assigned, when it sent one. Preferred over deriving a
+  /// band from [riskScore] locally: the server holds the live distribution the
+  /// cut-offs were fitted to.
+  final RiskBand? serverBand;
+
   const ChildModel({
     required this.id,
     String? code,
@@ -51,14 +56,39 @@ class ChildModel {
     this.history = const [],
     this.status = VisitStatus.toVisit,
     this.riskPending = false,
+    this.serverBand,
   }) : code = code ?? id;
 
+  // Cut-offs fitted to the live score distribution (25 Sep 2026). The IGS is
+  // multiplicative, soft-capped and normalised, so scores cluster far lower
+  // than a 0-1 reading suggests: p90 is 0.193, not 0.90. The previous 0.90 /
+  // 0.80 / 0.72 thresholds put 79 of 80 children in "routine", including one
+  // with six overdue doses.
+  //
+  // These split the caseload 10 / 20 / 30 / 40 percent, roughly five High per
+  // worker.
+  static const double highCut = 0.193;
+  static const double mediumCut = 0.068;
+  static const double watchCut = 0.022;
+
   RiskBand get riskBand {
-    if (riskScore >= 0.90) return RiskBand.high;
-    if (riskScore >= 0.80) return RiskBand.medium;
-    if (riskScore >= 0.72) return RiskBand.watch;
+    if (serverBand != null) return serverBand!;
+    if (riskScore >= highCut) return RiskBand.high;
+    if (riskScore >= mediumCut) return RiskBand.medium;
+    if (riskScore >= watchCut) return RiskBand.watch;
     return RiskBand.low;
   }
+
+  /// Parse the server's band name. It emits High | Medium | Watch | Low; the
+  /// app's display wording (High priority / Elevated / Watch / Routine) is a
+  /// presentation choice layered on top.
+  static RiskBand? bandFromString(String? s) => switch (s) {
+        'High' => RiskBand.high,
+        'Medium' => RiskBand.medium,
+        'Watch' => RiskBand.watch,
+        'Low' => RiskBand.low,
+        _ => null,
+      };
 
   String get priorityLabel => riskPending
       ? 'Awaiting score'
@@ -107,9 +137,13 @@ class ChildModel {
               .toList() ??
           const [],
       status: statusFromString(json['status'] as String?),
+      // A score of exactly 0.0 is a real result — the index is multiplicative,
+      // so a child with no vaccination debt scores zero, meaning fully up to
+      // date. Only an absent score means unscored.
       riskPending: json['riskPending'] as bool? ??
           json['pendingSync'] as bool? ??
           json['riskScore'] == null,
+      serverBand: bandFromString(json['riskBand'] as String?),
     );
   }
 

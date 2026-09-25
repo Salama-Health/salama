@@ -297,34 +297,75 @@ class _StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _StatTile(
-            value: facility.cdiScore.toStringAsFixed(2),
-            label: 'CDI Score',
-            color: facility.risk.color,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _StatTile(
-            value: facility.daysToWindow > 0
-                ? '${facility.daysToWindow}'
-                : '—',
-            label: 'Days to risk',
-            color: AppColors.primary,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _StatTile(
-            value: '${facility.children}',
-            label: 'Children',
-            color: AppColors.primary,
-          ),
+        _CdiProvenance(facility: facility),
+        Row(
+          children: [
+            Expanded(
+              child: _StatTile(
+                value: facility.cdiScore.toStringAsFixed(2),
+                label: 'CDI Score',
+                color: facility.risk.color,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatTile(
+                value: facility.daysToWindow > 0
+                    ? '${facility.daysToWindow}'
+                    : '—',
+                label: 'Days to risk',
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatTile(
+                value: '${facility.children}',
+                label: 'Children',
+                color: AppColors.primary,
+              ),
+            ),
+          ],
         ),
       ],
+    );
+  }
+}
+
+/// Where the CDI score came from.
+///
+/// A score built from an actual radar pass and one built from seasonal averages
+/// carry very different weight, and a worker moving a vaccine run deserves to
+/// know which they are acting on.
+class _CdiProvenance extends StatelessWidget {
+  final FacilityModel facility;
+  const _CdiProvenance({required this.facility});
+
+  @override
+  Widget build(BuildContext context) {
+    final fromRadar = facility.cdiFromRadar;
+    final color = fromRadar ? AppColors.textTertiary : AppColors.warning;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(
+            fromRadar ? Icons.satellite_alt_rounded : Icons.help_outline_rounded,
+            size: 12,
+            color: color,
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              facility.cdiSourceLabel,
+              style: AppTextStyles.captionMuted.copyWith(color: color),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

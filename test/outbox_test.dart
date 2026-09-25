@@ -71,6 +71,23 @@ void main() {
           reason: 'a dose already given must survive a dropped connection');
     });
 
+    test('queues when the endpoint is not deployed yet', () async {
+      // POST /visits does not exist on the server yet. A 404 is not the write
+      // being refused, and the same payload reaches the server in the next
+      // /sync/upload batch — so it must be kept, not thrown away.
+      for (final code in [404, 405]) {
+        await build();
+        final result = await outbox.submit<String>(
+          kind: OutboxKind.visit,
+          payload: {'status': 'visited'},
+          request: () async =>
+              throw ApiException('no route', statusCode: code),
+        );
+        expect(result.queued, isTrue, reason: 'status $code');
+        expect(outbox.pendingCount, 1, reason: 'status $code');
+      }
+    });
+
     test('rethrows a server rejection and queues nothing', () async {
       await expectLater(
         outbox.submit<String>(

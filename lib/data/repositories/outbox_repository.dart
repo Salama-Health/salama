@@ -180,7 +180,11 @@ class OutboxRepository {
       final value = await request();
       return WriteResult(WriteOutcome.synced, value);
     } on ApiException catch (e) {
-      if (!e.isNetwork) rethrow;
+      // A route that does not exist yet is not a rejection of the write. Some
+      // endpoints are still being built, and the same payload reaches the
+      // server in the next /sync/upload batch, so queue rather than lose it.
+      final notBuiltYet = e.statusCode == 404 || e.statusCode == 405;
+      if (!e.isNetwork && !notBuiltYet) rethrow;
       await add(kind, payload);
       return const WriteResult(WriteOutcome.queued);
     }
