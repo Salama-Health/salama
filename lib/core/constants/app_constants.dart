@@ -27,18 +27,17 @@ class AppConstants {
   static const String routeLogin = '/login';
   static const String routeChildQr = '/child-qr';
 
-  // Facility / location
-  static const String facility = 'Bentiu PHCC';
-  static const String region = 'Unity State';
-
   // Poweredby
   static const String poweredBy = 'celo';
 
   // ── Build info ──
-  static const String appVersion = '1.0.0';
-  static const String buildNumber = '1';
+  // Passed in by CI so the About sheet cannot drift from the built artifact:
+  //   flutter build apk --dart-define=APP_VERSION=1.0.0 --dart-define=BUILD_NUMBER=1
+  static const String appVersion =
+      String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');
+  static const String buildNumber =
+      String.fromEnvironment('BUILD_NUMBER', defaultValue: '1');
 
-  // ── Support ──
-  static const String supportEmail = 'support@salamahealth.org';
-  static const String supportPhone = '+211 920 000 000';
+  // Facility, region and support contacts are not constants — they belong to
+  // the signed-in worker and arrive from GET /auth/me.
 }

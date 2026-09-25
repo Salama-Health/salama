@@ -25,6 +25,11 @@ class ChildModel {
   final List<VaccinationRecord> history;
   final VisitStatus status;
 
+  /// True when the risk model has not scored this child yet — a registration
+  /// made on the device that has not synced. The app shows "Awaiting score"
+  /// rather than presenting a band it has not been given.
+  final bool riskPending;
+
   const ChildModel({
     required this.id,
     String? code,
@@ -45,6 +50,7 @@ class ChildModel {
     required this.dueVaccines,
     this.history = const [],
     this.status = VisitStatus.toVisit,
+    this.riskPending = false,
   }) : code = code ?? id;
 
   RiskBand get riskBand {
@@ -54,12 +60,14 @@ class ChildModel {
     return RiskBand.low;
   }
 
-  String get priorityLabel => switch (riskBand) {
-        RiskBand.high => 'High priority',
-        RiskBand.medium => 'Elevated',
-        RiskBand.watch => 'Watch',
-        RiskBand.low => 'Routine',
-      };
+  String get priorityLabel => riskPending
+      ? 'Awaiting score'
+      : switch (riskBand) {
+          RiskBand.high => 'High priority',
+          RiskBand.medium => 'Elevated',
+          RiskBand.watch => 'Watch',
+          RiskBand.low => 'Routine',
+        };
 
   static VisitStatus statusFromString(String? s) {
     switch (s) {
@@ -99,6 +107,9 @@ class ChildModel {
               .toList() ??
           const [],
       status: statusFromString(json['status'] as String?),
+      riskPending: json['riskPending'] as bool? ??
+          json['pendingSync'] as bool? ??
+          json['riskScore'] == null,
     );
   }
 

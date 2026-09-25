@@ -38,15 +38,10 @@ class _ExportReportSheet extends StatefulWidget {
 class _ExportReportSheetState extends State<_ExportReportSheet> {
   bool _csv = false;
 
-  static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
-  String get _period {
-    final now = DateTime.now();
-    return '${_months[now.month - 1]} ${now.year}';
-  }
+  /// The server's own label for the period when it gives one, otherwise the
+  /// current month from the device clock.
+  String get _period =>
+      widget.bundle.summary.period ?? currentPeriodLabel();
 
   String get _text {
     final s = widget.bundle.summary;

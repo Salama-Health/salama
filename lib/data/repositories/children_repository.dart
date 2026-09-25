@@ -84,9 +84,10 @@ class ChildrenRepository {
       'name': registration['name'],
       'gender': registration['gender'],
       'bornDate': registration['bornDate'],
-      // A provisional score: enough to surface a child with doses outstanding
-      // without inventing a model output the server has not produced yet.
-      'riskScore': due.isEmpty ? 0.40 : 0.75,
+      // No score is invented here: the risk model runs on the server. The
+      // child shows as "Awaiting score" until the registration syncs.
+      'riskScore': 0.0,
+      'riskPending': true,
       'distanceKm': registration['distanceKm'],
       'lastSeen': DateTime.now().toUtc().toIso8601String(),
       'currentLocation': registration['currentLocation'],

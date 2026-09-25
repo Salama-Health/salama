@@ -38,10 +38,18 @@ No auth header.
     "county": "Rubkona",
     "phone": "+211920000000",
     "facilitiesCount": 4,
-    "active": true
+    "active": true,
+    "supportEmail": "support@example.org",
+    "supportPhone": "+211920000000"
   }
 }
 ```
+
+`county` and `facility` are **not optional in practice**: the app header shows
+`county • facility` on every main screen and renders nothing there if they are
+missing. `supportEmail` / `supportPhone` drive the Contact support sheet; leave
+them out and it tells the worker to go to their supervisor rather than showing a
+placeholder address.
 
 ### POST `/auth/refresh`
 No auth header. Called automatically on any 401.
@@ -102,6 +110,12 @@ worker's caseload as an array.
 
 **Risk bands** are derived client-side from `riskScore`: `>= 0.90` high,
 `>= 0.80` elevated, `>= 0.72` watch, below that routine. Keep the scale 0–1.
+
+**`riskPending`** (optional, default false): true means the model has not scored
+this child yet, and the app shows "Awaiting score" instead of a band. Omitting
+`riskScore` entirely has the same effect. The app sets this itself on a child
+registered offline, and your response replaces it once the child syncs — so a
+registration must come back from the server **with a real score**, not a zero.
 
 `history[].status` is `given` | `due` | `missed`. `history` is **optional** here
 (the list view does not need it) but must be present on the detail endpoint.
@@ -237,9 +251,20 @@ else renders as `visit`.
 
 ### GET `/reports/summary`
 ```json
-{ "dosesThisMonth": 214, "coverageRate": 0.78, "childrenReached": 168, "dropoutRate": 0.12 }
+{
+  "dosesThisMonth": 214,
+  "coverageRate": 0.78,
+  "childrenReached": 168,
+  "dropoutRate": 0.12,
+  "period": "September 2026"
+}
 ```
 Rates are 0–1, not percentages.
+
+`period` (optional) is the label the app shows on the Reports chip and on the
+exported report. Send it whenever the figures cover something other than the
+device's current month — without it the app falls back to the phone's clock,
+which will disagree with you at a month boundary or in another timezone.
 
 ### GET `/reports/doses-weekly`
 ```json

@@ -84,7 +84,13 @@ class _VisitsScreenState extends ConsumerState<VisitsScreen> {
     }
     final searched = searchChildren(list.toList(), _query);
     final sorted = searched.toList()
-      ..sort((a, b) => b.riskScore.compareTo(a.riskScore));
+      ..sort((a, b) {
+        // Children the server has not scored yet are registrations made on this
+        // phone. They cannot be ranked, so they sit at the top rather than
+        // sinking to the bottom of a long caseload where they would be missed.
+        if (a.riskPending != b.riskPending) return a.riskPending ? -1 : 1;
+        return b.riskScore.compareTo(a.riskScore);
+      });
     return sorted;
   }
 

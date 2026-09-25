@@ -9,6 +9,11 @@ class WorkerModel {
   final int facilitiesCount;
   final bool active;
 
+  /// Support contacts for this worker's programme, served with the profile so
+  /// the app never shows a placeholder address.
+  final String? supportEmail;
+  final String? supportPhone;
+
   const WorkerModel({
     this.id = '',
     required this.name,
@@ -19,7 +24,14 @@ class WorkerModel {
     required this.phone,
     this.facilitiesCount = 0,
     this.active = true,
+    this.supportEmail,
+    this.supportPhone,
   });
+
+  /// "Unity State • Bentiu PHCC" for the app header — built from whichever of
+  /// the two the server actually gave us.
+  String get postingLabel =>
+      [county, facility].where((e) => e.isNotEmpty).join(' • ');
 
   factory WorkerModel.fromJson(Map<String, dynamic> json) {
     return WorkerModel(
@@ -32,6 +44,8 @@ class WorkerModel {
       phone: json['phone'] as String? ?? '',
       facilitiesCount: (json['facilitiesCount'] as num?)?.toInt() ?? 0,
       active: json['active'] as bool? ?? true,
+      supportEmail: json['supportEmail'] as String?,
+      supportPhone: json['supportPhone'] as String?,
     );
   }
 
@@ -45,5 +59,7 @@ class WorkerModel {
         'phone': phone,
         'facilitiesCount': facilitiesCount,
         'active': active,
+        'supportEmail': supportEmail,
+        'supportPhone': supportPhone,
       };
 }

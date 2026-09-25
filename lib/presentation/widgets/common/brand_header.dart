@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../providers/auth_provider.dart';
 
-/// Top header showing the Salama logo, app name and facility location.
-/// Used across Home, Visits, Scan QR and Profile.
-class BrandHeader extends StatelessWidget {
+/// Top header showing the Salama logo, app name and the signed-in worker's
+/// posting. Used across Home, Visits, Reports and Profile.
+///
+/// The posting line comes from GET /auth/me. When no profile is loaded yet the
+/// line is simply omitted rather than filled with a placeholder location.
+class BrandHeader extends ConsumerWidget {
   final Widget? trailing;
   final bool showDivider;
 
   const BrandHeader({super.key, this.trailing, this.showDivider = true});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final posting = ref.watch(currentWorkerProvider)?.postingLabel ?? '';
     return Container(
       padding: const EdgeInsets.fromLTRB(
           AppDimensions.screenPadding, 8, AppDimensions.screenPadding, 10),
@@ -40,11 +47,15 @@ class BrandHeader extends StatelessWidget {
                   AppConstants.appName,
                   style: AppTextStyles.h1.copyWith(color: AppColors.primary),
                 ),
-                const SizedBox(height: 1),
-                Text(
-                  '${AppConstants.region} • ${AppConstants.facility}',
-                  style: AppTextStyles.captionMuted,
-                ),
+                if (posting.isNotEmpty) ...[
+                  const SizedBox(height: 1),
+                  Text(
+                    posting,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.captionMuted,
+                  ),
+                ],
               ],
             ),
           ),

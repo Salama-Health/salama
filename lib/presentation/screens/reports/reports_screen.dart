@@ -55,7 +55,10 @@ class ReportsScreen extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    _PeriodChip(),
+                    _PeriodChip(
+                      label: reportsAsync.valueOrNull?.summary.period ??
+                          currentPeriodLabel(),
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppDimensions.spaceMD),
@@ -154,6 +157,9 @@ class _ReportsBody extends StatelessWidget {
 }
 
 class _PeriodChip extends StatelessWidget {
+  final String label;
+  const _PeriodChip({required this.label});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -169,7 +175,7 @@ class _PeriodChip extends StatelessWidget {
           const Icon(Icons.calendar_today_rounded,
               size: 12, color: AppColors.primary),
           const SizedBox(width: 5),
-          Text('This month',
+          Text(label,
               style: AppTextStyles.caption.copyWith(
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.w700,

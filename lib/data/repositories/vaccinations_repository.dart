@@ -24,11 +24,11 @@ class VaccinationsRepository {
     final resp = await _api.post('/vaccinations', data: {
       'childId': childId,
       'vaccine': vaccine,
-      if (dose != null) 'dose': dose,
-      if (batchNumber != null) 'batchNumber': batchNumber,
+      'dose': ?dose,
+      'batchNumber': ?batchNumber,
       'status': status,
       'dateGiven': DateTime.now().toUtc().toIso8601String(),
-      if (clientUuid != null) 'clientUuid': clientUuid,
+      'clientUuid': ?clientUuid,
     });
     return VaccinationRecord.fromJson(resp.data as Map<String, dynamic>);
   }

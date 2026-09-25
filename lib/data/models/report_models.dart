@@ -4,11 +4,17 @@ class ReportSummary {
   final int childrenReached;
   final double dropoutRate; // 0..1
 
+  /// The period these figures cover, as the server labels it ("September 2026").
+  /// The app displays this rather than assuming the device month matches what
+  /// was aggregated.
+  final String? period;
+
   const ReportSummary({
     required this.dosesThisMonth,
     required this.coverageRate,
     required this.childrenReached,
     required this.dropoutRate,
+    this.period,
   });
 
   factory ReportSummary.fromJson(Map<String, dynamic> j) => ReportSummary(
@@ -16,7 +22,19 @@ class ReportSummary {
         coverageRate: (j['coverageRate'] as num?)?.toDouble() ?? 0,
         childrenReached: (j['childrenReached'] as num?)?.toInt() ?? 0,
         dropoutRate: (j['dropoutRate'] as num?)?.toDouble() ?? 0,
+        period: j['period'] as String?,
       );
+}
+
+/// Month and year from the device clock, used only when the server does not
+/// label the period itself.
+String currentPeriodLabel([DateTime? now]) {
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  final d = now ?? DateTime.now();
+  return '${months[d.month - 1]} ${d.year}';
 }
 
 class DayCount {

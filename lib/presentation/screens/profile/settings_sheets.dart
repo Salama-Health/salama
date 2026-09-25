@@ -10,6 +10,7 @@ import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/worker_model.dart';
 import '../../../data/repositories/settings_repository.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/data_providers.dart';
 import '../../widgets/common/app_button.dart';
@@ -728,40 +729,65 @@ class _FaqTile extends StatelessWidget {
 // Contact support
 // ─────────────────────────────────────────────────────────────────────────────
 void showContactSupportSheet(BuildContext context) {
-  showAppSheet(
-    context,
-    AppSheet(
+  showAppSheet(context, const _ContactSupportSheet());
+}
+
+/// Support contacts come with the worker's profile. If the programme has not
+/// configured any, the sheet says so — it does not show an address that nobody
+/// reads.
+class _ContactSupportSheet extends ConsumerWidget {
+  const _ContactSupportSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final worker = ref.watch(currentWorkerProvider);
+    final email = worker?.supportEmail;
+    final phone = worker?.supportPhone;
+    final hasAny = (email != null && email.isNotEmpty) ||
+        (phone != null && phone.isNotEmpty);
+
+    return AppSheet(
       icon: Icons.headset_mic_outlined,
       iconColor: AppColors.info,
       title: 'Contact support',
-      subtitle: 'Salama Health team',
+      subtitle: worker?.facility ?? 'Salama Health',
       maxHeightFactor: 0.6,
       child: ListView(
         padding: const EdgeInsets.all(AppDimensions.spaceMD),
         shrinkWrap: true,
         children: [
-          _CopyRow(
-            icon: Icons.mail_outline_rounded,
-            label: 'Email',
-            value: AppConstants.supportEmail,
-          ),
-          const SizedBox(height: 6),
-          _CopyRow(
-            icon: Icons.phone_outlined,
-            label: 'Phone / WhatsApp',
-            value: AppConstants.supportPhone,
-          ),
+          if (email != null && email.isNotEmpty) ...[
+            _CopyRow(
+              icon: Icons.mail_outline_rounded,
+              label: 'Email',
+              value: email,
+            ),
+            const SizedBox(height: 6),
+          ],
+          if (phone != null && phone.isNotEmpty)
+            _CopyRow(
+              icon: Icons.phone_outlined,
+              label: 'Phone / WhatsApp',
+              value: phone,
+            ),
+          if (!hasAny)
+            _Note(
+              icon: Icons.info_outline_rounded,
+              text: 'No support contact has been set for your programme yet. '
+                  'Your facility supervisor is the fastest route for anything '
+                  'urgent.',
+            ),
           const SizedBox(height: AppDimensions.spaceMD),
           _Note(
-            icon: Icons.info_outline_rounded,
+            icon: Icons.local_hospital_outlined,
             text: 'For anything clinical, or to correct a record, speak to '
                 'your facility supervisor first — they can act faster than we '
                 'can.',
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -785,34 +811,29 @@ void showTrainingSheet(BuildContext context) {
             title: 'Registering a child',
             body: 'Taking consent, estimating age when the date of birth is '
                 'unknown, and handing over the QR code.',
-            minutes: 4,
           ),
           _GuideTile(
             icon: Icons.qr_code_scanner_rounded,
             title: 'Scanning and recording a dose',
             body: 'Confirming identity, choosing the right vaccine and '
                 'entering the batch number.',
-            minutes: 3,
           ),
           _GuideTile(
             icon: Icons.cloud_off_rounded,
             title: 'Working offline',
             body: 'What the app can and cannot do without a connection, and '
                 'when to sync.',
-            minutes: 5,
           ),
           _GuideTile(
             icon: Icons.ac_unit_rounded,
             title: 'Reading climate risk',
             body: 'What the CDI score means and how to act on a disruption '
                 'window before it opens.',
-            minutes: 6,
           ),
           _GuideTile(
             icon: Icons.route_rounded,
             title: 'Running a route',
             body: 'Planning a day of visits and recording outcomes as you go.',
-            minutes: 4,
             isLast: true,
           ),
           SizedBox(height: AppDimensions.spaceMD),
@@ -831,14 +852,12 @@ class _GuideTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String body;
-  final int minutes;
   final bool isLast;
 
   const _GuideTile({
     required this.icon,
     required this.title,
     required this.body,
-    required this.minutes,
     this.isLast = false,
   });
 
@@ -870,13 +889,7 @@ class _GuideTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(child: Text(title, style: AppTextStyles.h4)),
-                      Text('$minutes min read',
-                          style: AppTextStyles.captionMuted),
-                    ],
-                  ),
+                  Text(title, style: AppTextStyles.h4),
                   const SizedBox(height: 2),
                   Text(body, style: AppTextStyles.bodySmall),
                 ],
