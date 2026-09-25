@@ -345,18 +345,16 @@ class _CdiProvenance extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fromRadar = facility.cdiFromRadar;
-    final color = fromRadar ? AppColors.textTertiary : AppColors.warning;
+    // Nothing reported means nothing to claim.
+    if (!facility.cdiFromRadar) return const SizedBox.shrink();
+    const color = AppColors.textTertiary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(
-            fromRadar ? Icons.satellite_alt_rounded : Icons.help_outline_rounded,
-            size: 12,
-            color: color,
-          ),
+          const Icon(Icons.satellite_alt_rounded,
+              size: 12, color: color),
           const SizedBox(width: 5),
           Expanded(
             child: Text(

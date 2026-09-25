@@ -1,5 +1,10 @@
 # Salama Health — API contract
 
+**Every endpoint below was exercised against the live server on 25 Sep 2026**
+with `CHW-001`; the captured shapes are pinned in `test/live_payload_test.dart`.
+`GET /children` returns 80 children, `/facilities` 93, `/devices/alerts` 14.
+`POST /visits`, `POST /auth/change-pin` and `GET /alerts` return 404 today.
+
 What the mobile app sends and what it expects back. Every field listed here is
 read by the Flutter client today; anything the app can live without is marked
 **optional**, and the app's fallback is stated.
@@ -290,11 +295,16 @@ change when it lands.
   as a general climate alert.
 - `county` and `state` are joined for display.
 - `daysToWindow` `0` means the disruption is already active.
-- `sarObservedAt` (optional) is the date of the satellite radar pass behind the
-  score. **Null means the score came from seasonal estimates rather than an
-  actual pass**, which is materially weaker evidence — the facility sheet says
-  "Seasonal estimate — no radar pass" so a worker moving a vaccine run knows
-  what they are acting on.
+- `sarObservedAt` — **not currently sent by this endpoint** (it exists on the
+  climate view). Because absent means "not reported" rather than "no radar
+  pass", the app shows nothing about provenance instead of wrongly calling a
+  radar-backed score a seasonal estimate. **Adding it to `/facilities` would
+  light this up**: the sheet then reads "Radar observed today", or warns when
+  a null genuinely means seasonal estimates.
+- `cdiScore` clusters low like the child index — a facility the server labels
+  `"Heatwave cold chain risk"` scores 0.1962 with `risk: "Low"`. The app
+  therefore takes the band from `risk` and decides cold-chain versus climate
+  from the `hazard` wording, never from a score threshold.
 - `state` comes back as `"Unity"`, not `"Unity State"`; the app joins county and
   state for display either way.
 
@@ -426,8 +436,25 @@ Rules that matter to the client:
 ## 9. Alerts *(new — optional)*
 
 ### GET `/devices/alerts`
-Currently served under `/devices`; the client points there. If it returns a
-non-empty array it drives the Alerts screen and the bell badge. If it 404s or fails, the app derives alerts on-device
+Currently served under `/devices`; the client points there (plain `/alerts`
+returns 404). If it returns a non-empty array it drives the Alerts screen and
+the bell badge.
+
+**Verified against the live response, 25 Sep.** The server sends:
+
+```json
+{ "id": "overdue-6b0017ed", "type": "overdue", "severity": "danger",
+  "title": "Nyakuoth Pal is high risk",
+  "body": "13 overdue dose(s). Prioritise this visit.",
+  "facilityId": null, "childId": "27bf0658-…", "createdAt": "…" }
+```
+
+Two differences from the shape below, both now handled client-side:
+- the field is **`type`**, not `kind` — values seen: `overdue`, `hazard`
+- severity is **`danger`**, not `critical` — all fourteen live alerts were
+  rendering as blue "Info" before this was fixed
+
+`action` and `daysToWindow` are not sent; the card simply omits them. If it 404s or fails, the app derives alerts on-device
 from facility risk, overdue children and the offline queue — so shipping it is
 an upgrade, not a prerequisite.
 

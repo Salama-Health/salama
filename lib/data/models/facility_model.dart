@@ -39,9 +39,12 @@ class FacilityModel {
   final int recentlyVisited;
   final bool assigned;
 
-  /// When the satellite radar behind the CDI was observed. Null means the score
-  /// came from seasonal estimates rather than an actual pass — materially
-  /// weaker evidence, so the app says so instead of presenting it as measured.
+  /// When the satellite radar behind the CDI was observed.
+  ///
+  /// `/facilities` does not send this today — it is exposed on the climate view
+  /// only. Absent therefore means "not reported", which is not the same as "no
+  /// radar pass", so the app stays silent rather than claiming the score is a
+  /// seasonal estimate. Once the field is served, a null becomes meaningful.
   final DateTime? sarObservedAt;
 
   const FacilityModel({
@@ -62,9 +65,10 @@ class FacilityModel {
     this.sarObservedAt,
   });
 
-  /// "observed today" / "radar 3 days old" / "seasonal estimate".
+  /// "observed today" / "radar 3 days old". Empty when the server reports
+  /// nothing about provenance.
   String get cdiSourceLabel {
-    if (sarObservedAt == null) return 'Seasonal estimate — no radar pass';
+    if (sarObservedAt == null) return '';
     final days = DateTime.now().difference(sarObservedAt!).inDays;
     if (days <= 0) return 'Radar observed today';
     if (days == 1) return 'Radar observed yesterday';

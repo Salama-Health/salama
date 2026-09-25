@@ -94,24 +94,42 @@ class AlertModel {
     return '${diff.inDays}d ago';
   }
 
-  static AlertSeverity severityFromString(String? s) => switch (s) {
-        'critical' => AlertSeverity.critical,
-        'warning' => AlertSeverity.warning,
+  /// The server says `danger` where this app says `critical`. Getting this
+  /// wrong painted fourteen live danger alerts as blue "Info".
+  static AlertSeverity severityFromString(String? s) =>
+      switch (s?.toLowerCase()) {
+        'critical' || 'danger' || 'high' => AlertSeverity.critical,
+        'warning' || 'medium' || 'warn' => AlertSeverity.warning,
         _ => AlertSeverity.info,
       };
 
-  static AlertKind kindFromString(String? s) => switch (s) {
-        'coldChain' || 'cold_chain' => AlertKind.coldChain,
-        'climate' => AlertKind.climate,
-        'overdueChild' || 'overdue_child' => AlertKind.overdueChild,
-        'coverage' => AlertKind.coverage,
+  /// The server calls the field `type` and uses shorter names than this app's
+  /// `kind`; both spellings are accepted.
+  static AlertKind kindFromString(String? s) => switch (s?.toLowerCase()) {
+        'coldchain' || 'cold_chain' => AlertKind.coldChain,
+        'climate' || 'hazard' || 'weather' => AlertKind.climate,
+        'overduechild' || 'overdue_child' || 'overdue' =>
+          AlertKind.overdueChild,
+        'coverage' || 'dropout' => AlertKind.coverage,
         'sync' => AlertKind.sync,
         _ => AlertKind.climate,
       };
 
+  /// A generic `hazard` whose wording is about the cold chain is shown as a
+  /// cold-chain alert, because that is what the worker has to act on.
+  static AlertKind _kindFor(Map<String, dynamic> j) {
+    final kind =
+        kindFromString((j['kind'] ?? j['type']) as String?);
+    if (kind != AlertKind.climate) return kind;
+    final text = '${j['title'] ?? ''} ${j['body'] ?? ''}'.toLowerCase();
+    return text.contains('cold chain') || text.contains('cold-chain')
+        ? AlertKind.coldChain
+        : AlertKind.climate;
+  }
+
   factory AlertModel.fromJson(Map<String, dynamic> j) => AlertModel(
         id: j['id'] as String? ?? '',
-        kind: kindFromString(j['kind'] as String?),
+        kind: _kindFor(j),
         severity: severityFromString(j['severity'] as String?),
         title: j['title'] as String? ?? '',
         body: j['body'] as String? ?? '',

@@ -216,17 +216,46 @@ void main() {
       assigned: true,
     );
 
-    test('a high-CDI facility raises a critical cold-chain alert', () {
+    test('a facility in danger raises a critical alert', () {
       final alerts = AlertsRepository.derive(
         facilities: [facility],
         children: const [],
         pendingRecords: 0,
       );
       final first = alerts.first;
-      expect(first.kind, AlertKind.coldChain);
+      expect(first.kind, AlertKind.climate,
+          reason: 'flooding is a climate hazard, not a cold-chain one');
       expect(first.severity, AlertSeverity.critical);
       expect(first.facilityId, 'f1');
       expect(first.timingLabel, 'Opens in 6 days');
+    });
+
+    test('cold chain is read from the hazard, not from a score threshold', () {
+      // The live index clusters low — a facility the server flags as
+      // "Heatwave cold chain risk" scores 0.1962, under any cut-off worth
+      // picking. The hazard text is the reliable signal.
+      final coldChain = FacilityModel(
+        id: 'f2',
+        name: 'Walgak PHCC',
+        county: 'Akobo, Jonglei',
+        children: 14,
+        cdiScore: 0.1962,
+        risk: FacilityRisk.warning,
+        hazard: 'Heatwave cold chain risk',
+        daysToWindow: 2,
+        hazardDetail: 'Cold-chain failure risk (P=0.32).',
+        hazardTimeframe: '3 days',
+        highPriority: 2,
+        dueSoon: 5,
+        recentlyVisited: 1,
+      );
+
+      final alerts = AlertsRepository.derive(
+        facilities: [coldChain],
+        children: const [],
+        pendingRecords: 0,
+      );
+      expect(alerts.single.kind, AlertKind.coldChain);
     });
 
     test('overdue children and the sync queue both surface', () {

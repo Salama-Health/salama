@@ -58,7 +58,14 @@ class AlertsRepository {
     for (final f in facilities) {
       if (f.risk == FacilityRisk.ok) continue;
       final critical = f.risk == FacilityRisk.danger;
-      final coldChain = f.cdiScore >= 0.75;
+      // Keyed off what the server actually says the hazard is. A CDI cut-off
+      // was guesswork: the index clusters low, so a facility flagged
+      // "Heatwave cold chain risk" scores well under any threshold worth
+      // picking.
+      final coldChain =
+          f.hazard.toLowerCase().contains('cold chain') ||
+              f.hazardDetail.toLowerCase().contains('cold-chain') ||
+              f.hazardDetail.toLowerCase().contains('cold chain');
       out.add(AlertModel(
         id: 'facility-${f.id.isEmpty ? f.name : f.id}',
         kind: coldChain ? AlertKind.coldChain : AlertKind.climate,
