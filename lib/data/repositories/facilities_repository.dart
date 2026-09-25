@@ -1,4 +1,5 @@
 import '../../core/api/api_client.dart';
+import '../../core/api/api_routes.dart';
 import '../../core/storage/offline_cache.dart';
 import '../models/facility_model.dart';
 
@@ -12,7 +13,7 @@ class FacilitiesRepository {
   Future<List<FacilityModel>> list({bool assignedOnly = false}) {
     return _cache.readThrough<List<FacilityModel>>(
       key: OfflineCache.kFacilities,
-      fetchJson: () async => (await _api.get('/facilities',
+      fetchJson: () async => (await _api.get(ApiRoutes.facilities,
               query: assignedOnly ? {'assignedOnly': true} : null))
           .data,
       decode: (json) => (json as List)
@@ -22,7 +23,7 @@ class FacilitiesRepository {
   }
 
   Future<FacilityModel> detail(String id) async {
-    final resp = await _api.get('/facilities/$id');
+    final resp = await _api.get(ApiRoutes.facility(id));
     return FacilityModel.fromJson(resp.data as Map<String, dynamic>);
   }
 }

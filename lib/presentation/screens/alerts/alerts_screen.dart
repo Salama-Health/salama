@@ -197,19 +197,27 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       message: '$e',
                       onRetry: () => ref.invalidate(alertsProvider),
                     ),
+                    // Built lazily: an alert card is not cheap (stripe,
+                    // wrapped body, action row) and a busy county can raise
+                    // dozens at once.
                     data: (_) => list.isEmpty
                         ? _EmptyState(filtered: _severity != null || _kind != null)
-                        : Column(
-                            children: list
-                                .map((a) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 7),
-                                      child: AlertCard(
-                                        alert: a,
-                                        unread: !read.contains(a.id),
-                                        onTap: () => _open(a),
-                                      ),
-                                    ))
-                                .toList(),
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: EdgeInsets.zero,
+                            itemCount: list.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 7),
+                            itemBuilder: (context, i) {
+                              final a = list[i];
+                              return AlertCard(
+                                key: ValueKey(a.id),
+                                alert: a,
+                                unread: !read.contains(a.id),
+                                onTap: () => _open(a),
+                              );
+                            },
                           ),
                   ),
                 ],

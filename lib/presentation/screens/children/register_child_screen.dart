@@ -9,7 +9,9 @@ import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/id_gen.dart';
 import '../../../core/utils/immunization_schedule.dart';
+import '../../../data/models/child_model.dart';
 import '../../../data/models/facility_model.dart';
+import '../../../data/repositories/outbox_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/data_providers.dart';
@@ -224,37 +226,35 @@ class _RegisterChildScreenState extends ConsumerState<RegisterChildScreen> {
       'registeredAt': now.toIso8601String(),
     };
 
-    final online = ConnectivityService.instance.isOnline.value;
-    var synced = false;
-    var resultCode = code;
-
+    // One call covers both paths: sent if the network allows, durably queued
+    // if not. Only a rejection from the server surfaces as an error.
+    final WriteResult<ChildModel> result;
     try {
-      if (online) {
-        final child = await ref.read(childrenRepositoryProvider).create(payload);
-        synced = true;
-        resultCode = child.code;
-      } else {
-        await ref.read(syncRepositoryProvider).queueChild(payload);
-        await ref.read(childrenRepositoryProvider).addLocal(payload);
-      }
+      result = await ref.read(outboxRepositoryProvider).submit<ChildModel>(
+            kind: OutboxKind.child,
+            payload: payload,
+            request: () =>
+                ref.read(childrenRepositoryProvider).create(payload),
+          );
     } on ApiException catch (e) {
-      if (e.isNetwork) {
-        // The connection dropped mid-submit — keep the registration rather
-        // than making the worker fill the form again.
-        await ref.read(syncRepositoryProvider).queueChild(payload);
-        await ref.read(childrenRepositoryProvider).addLocal(payload);
-      } else {
-        if (!mounted) return;
-        setState(() => _saving = false);
-        _toast(e.message, error: true);
-        return;
-      }
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _toast(e.message, error: true);
+      return;
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
       _toast('$e', error: true);
       return;
     }
+
+    // A queued registration has to appear in the caseload straight away, or the
+    // child the worker just created is invisible to the app that created them.
+    if (result.queued) {
+      await ref.read(childrenRepositoryProvider).addLocal(payload);
+    }
+    final synced = result.synced;
+    final resultCode = result.value?.code ?? code;
 
     ref.invalidate(childrenProvider);
     ref.invalidate(syncStatusProvider);

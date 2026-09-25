@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../constants/app_constants.dart';
 import '../storage/token_storage.dart';
 import 'api_exception.dart';
+import 'api_routes.dart';
 
 /// Thin Dio wrapper: base URL, JWT auth header, and automatic token refresh.
 class ApiClient {
@@ -42,7 +43,7 @@ class ApiClient {
         // worker out at startup even though the refresh token is still good.
         final path = e.requestOptions.path;
         final isAuthCall =
-            path.contains('/auth/login') || path.contains('/auth/refresh');
+            ApiRoutes.noRefresh.any((p) => path.contains(p));
         if (e.response?.statusCode == 401 &&
             !isAuthCall &&
             e.requestOptions.extra['retried'] != true) {
@@ -71,7 +72,7 @@ class ApiClient {
     if (refresh == null) return false;
     try {
       final resp = await _dio.post(
-        '/auth/refresh',
+        ApiRoutes.refresh,
         data: {'refreshToken': refresh},
         options: Options(extra: {'skipAuth': true}),
       );

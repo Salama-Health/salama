@@ -1,4 +1,5 @@
 import '../../core/api/api_client.dart';
+import '../../core/api/api_routes.dart';
 import '../../core/storage/offline_cache.dart';
 import '../models/report_models.dart';
 
@@ -14,9 +15,9 @@ class ReportsRepository {
       key: OfflineCache.kReports,
       fetchJson: () async {
         final results = await Future.wait([
-          _api.get('/reports/summary'),
-          _api.get('/reports/doses-weekly'),
-          _api.get('/reports/coverage-by-vaccine'),
+          _api.get(ApiRoutes.reportsSummary),
+          _api.get(ApiRoutes.reportsDosesWeekly),
+          _api.get(ApiRoutes.reportsCoverage),
         ]);
         return {
           'summary': results[0].data,

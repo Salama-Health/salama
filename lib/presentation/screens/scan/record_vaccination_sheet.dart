@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_exception.dart';
-import '../../../core/services/connectivity_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/child_model.dart';
+import '../../../data/models/vaccination_record.dart';
+import '../../../data/repositories/outbox_repository.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/data_providers.dart';
 
@@ -87,97 +88,68 @@ class _RecordVaccinationSheetState
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
+
     final child = widget.child;
     final batch = _batchCtrl.text.trim();
-    final online = ConnectivityService.instance.isOnline.value;
-    final clientUuid =
-        '${child.id}-$_vaccine-${DateTime.now().millisecondsSinceEpoch}';
-    // Set to false if the dose ends up in the offline queue instead of
-    // reaching the server, so the confirmation tells the truth.
-    var reachedServer = online;
-    try {
-      if (online) {
-        await ref.read(vaccinationsRepositoryProvider).record(
-              childId: child.id,
-              vaccine: _vaccine,
-              batchNumber: batch.isEmpty ? null : batch,
-              status: 'given',
-              clientUuid: clientUuid,
-            );
-      } else {
-        await ref.read(syncRepositoryProvider).queueVaccination({
-          'childId': child.id,
-          'vaccine': _vaccine,
-          'status': 'given',
-          'batchNumber': batch.isEmpty ? null : batch,
-          'dateGiven': _date.toUtc().toIso8601String(),
-          'clientUuid': clientUuid,
-        });
-      }
-      // Refresh anything that depends on this child's doses.
-      ref.invalidate(childrenProvider);
-      ref.invalidate(childDetailProvider(child.id));
-      ref.invalidate(activityProvider);
-      ref.invalidate(syncStatusProvider);
-      ref.invalidate(alertsProvider);
+    final payload = <String, dynamic>{
+      'childId': child.id,
+      'vaccine': _vaccine,
+      'status': 'given',
+      'batchNumber': batch.isEmpty ? null : batch,
+      'site': _site,
+      'notes': _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      'dateGiven': _date.toUtc().toIso8601String(),
+      'clientUuid':
+          '${child.id}-$_vaccine-${DateTime.now().millisecondsSinceEpoch}',
+    };
 
-      if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(reachedServer
-              ? '$_vaccine recorded for ${child.name}'
-              : '$_vaccine saved offline — will sync later'),
-          backgroundColor:
-              reachedServer ? AppColors.success : AppColors.warning,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    final WriteResult<VaccinationRecord> result;
+    try {
+      result =
+          await ref.read(outboxRepositoryProvider).submit<VaccinationRecord>(
+                kind: OutboxKind.vaccination,
+                payload: payload,
+                request: () =>
+                    ref.read(vaccinationsRepositoryProvider).record(payload),
+              );
     } on ApiException catch (e) {
-      if (!e.isNetwork) {
-        if (!mounted) return;
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not save: ${e.message}'),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
-      // The connection dropped mid-save. A recorded dose is not something to
-      // lose to a dropped bar of signal — queue it and tell the worker.
-      reachedServer = false;
-      await ref.read(syncRepositoryProvider).queueVaccination({
-        'childId': child.id,
-        'vaccine': _vaccine,
-        'status': 'given',
-        'batchNumber': batch.isEmpty ? null : batch,
-        'dateGiven': _date.toUtc().toIso8601String(),
-        'clientUuid': clientUuid,
-      });
-      ref.invalidate(syncStatusProvider);
       if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$_vaccine saved on this phone — will sync later'),
-          backgroundColor: AppColors.warning,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      setState(() => _saving = false);
+      _toast('Could not save: ${e.message}', AppColors.error);
+      return;
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not save: $e'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _toast('Could not save: $e', AppColors.error);
+      return;
     }
+
+    // Refresh anything that depends on this child's doses.
+    ref.invalidate(childrenProvider);
+    ref.invalidate(childDetailProvider(child.id));
+    ref.invalidate(vaccinationHistoryProvider(child.id));
+    ref.invalidate(activityProvider);
+    ref.invalidate(syncStatusProvider);
+    ref.invalidate(alertsProvider);
+
+    if (!mounted) return;
+    Navigator.pop(context);
+    _toast(
+      result.synced
+          ? '$_vaccine recorded for ${child.name}'
+          : '$_vaccine saved on this phone — will sync later',
+      result.synced ? AppColors.success : AppColors.warning,
+    );
+  }
+
+  void _toast(String message, Color background) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: background,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override

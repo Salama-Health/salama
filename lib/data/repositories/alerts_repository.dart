@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/api/api_routes.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/storage/offline_cache.dart';
 import '../models/alert_model.dart';
@@ -33,7 +34,7 @@ class AlertsRepository {
     try {
       final list = await _cache.readThrough<List<AlertModel>>(
         key: OfflineCache.kAlerts,
-        fetchJson: () async => (await _api.get('/alerts')).data,
+        fetchJson: () async => (await _api.get(ApiRoutes.alerts)).data,
         decode: (json) => (json as List)
             .map((e) => AlertModel.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -128,13 +129,21 @@ class AlertsRepository {
   }
 
   // ── Read state ─────────────────────────────────────────────────────────────
+  // Read state is consulted on every build of the bell and every alert row, so
+  // the decode is memoized against the raw string it came from.
+  String? _readRaw;
+  Set<String> _readIds = const {};
+
   Set<String> get readIds {
     final raw = _prefs.getString(_kRead);
-    if (raw == null || raw.isEmpty) return {};
+    if (raw == null || raw.isEmpty) return const {};
+    if (raw == _readRaw) return _readIds;
     try {
-      return (jsonDecode(raw) as List).map((e) => e.toString()).toSet();
+      _readIds = (jsonDecode(raw) as List).map((e) => e.toString()).toSet();
+      _readRaw = raw;
+      return _readIds;
     } catch (_) {
-      return {};
+      return const {};
     }
   }
 

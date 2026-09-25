@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/child_model.dart';
 import '../../../data/models/vaccination_record.dart';
+import '../../providers/data_providers.dart';
 
 void showMedicalHistorySheet(BuildContext context, ChildModel child) {
   showModalBottomSheet(
@@ -242,13 +245,19 @@ class _ScanBracketPainter extends CustomPainter {
 }
 
 // ── History stage ────────────────────────────────────────────────────────
-class _HistoryView extends StatelessWidget {
+class _HistoryView extends ConsumerWidget {
   final ChildModel child;
   const _HistoryView({required this.child});
 
   @override
-  Widget build(BuildContext context) {
-    final history = child.history;
+  Widget build(BuildContext context, WidgetRef ref) {
+    // GET /vaccinations is the authoritative record. Until it answers — or if
+    // there is no signal — the copy that arrived with the child stands in, so
+    // the timeline is never empty when we already know something.
+    final fetched = ref.watch(vaccinationHistoryProvider(child.id)).valueOrNull;
+    final history = (fetched == null || fetched.isEmpty)
+        ? child.history
+        : fetched;
     final given = history.where((r) => r.status == DoseStatus.given).length;
     final due = history.where((r) => r.status == DoseStatus.due).length;
     final missed =

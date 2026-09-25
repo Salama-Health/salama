@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/api/api_routes.dart';
 import '../../core/storage/offline_cache.dart';
 import '../../core/storage/token_storage.dart';
 import '../models/worker_model.dart';
@@ -15,7 +16,7 @@ class AuthRepository {
   /// Login with worker ID + PIN. Persists tokens and returns the worker.
   Future<WorkerModel> login(String workerId, String pin) async {
     final resp = await _api.post(
-      '/auth/login',
+      ApiRoutes.login,
       data: {'workerId': workerId, 'pin': pin},
       options: Options(extra: {'skipAuth': true}),
     );
@@ -30,7 +31,7 @@ class AuthRepository {
   }
 
   Future<WorkerModel> me() async {
-    final resp = await _api.get('/auth/me');
+    final resp = await _api.get(ApiRoutes.me);
     final json = resp.data as Map<String, dynamic>;
     await _cache.write(OfflineCache.kWorker, json);
     return WorkerModel.fromJson(json);
@@ -48,7 +49,7 @@ class AuthRepository {
   }
 
   Future<void> changePin({required String currentPin, required String newPin}) {
-    return _api.post('/auth/change-pin',
+    return _api.post(ApiRoutes.changePin,
         data: {'currentPin': currentPin, 'newPin': newPin});
   }
 

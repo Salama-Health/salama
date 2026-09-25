@@ -7,6 +7,7 @@ import '../../data/models/facility_model.dart';
 import '../../data/models/report_models.dart';
 import '../../data/models/route_models.dart';
 import '../../data/models/sync_models.dart';
+import '../../data/models/vaccination_record.dart';
 import '../../data/repositories/alerts_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import 'core_providers.dart';
@@ -22,11 +23,25 @@ final childDetailProvider =
   return ref.watch(childrenRepositoryProvider).detail(id);
 });
 
+/// A child's dose history from the server. The child object already carries a
+/// history for the list view; this fetches the authoritative record when the
+/// timeline is actually opened.
+final vaccinationHistoryProvider =
+    FutureProvider.family<List<VaccinationRecord>, String>((ref, childId) async {
+  return ref.watch(vaccinationsRepositoryProvider).history(childId);
+});
+
 /// Facilities visible to the worker, sorted by CDI (highest first).
 final facilitiesProvider = FutureProvider<List<FacilityModel>>((ref) async {
   final list = await ref.watch(facilitiesRepositoryProvider).list();
   list.sort((a, b) => b.cdiScore.compareTo(a.cdiScore));
   return list;
+});
+
+/// One facility, fetched fresh when its detail sheet opens.
+final facilityDetailProvider =
+    FutureProvider.family<FacilityModel, String>((ref, id) async {
+  return ref.watch(facilitiesRepositoryProvider).detail(id);
 });
 
 /// Recent activity feed for the home screen.

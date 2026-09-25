@@ -1,75 +1,52 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../core/api/api_client.dart';
 import '../../core/api/api_exception.dart';
+import '../../core/api/api_routes.dart';
 import '../../core/storage/offline_cache.dart';
 import '../models/sync_models.dart';
+import 'outbox_repository.dart';
 
-/// Offline-first sync. Actions recorded while offline are queued locally and
-/// flushed to POST /sync/upload. Every queued item carries a clientUuid so the
-/// server de-duplicates re-uploads.
+/// Sync between the device outbox and the server.
+///
+/// The queue itself lives in [OutboxRepository]; this type owns the transport:
+/// reading status, flushing the outbox, and keeping the last-synced stamp.
 class SyncRepository {
-  SyncRepository(this._api, this._prefs, this._cache);
+  SyncRepository(this._api, this._outbox, this._cache);
 
   final ApiClient _api;
-  final SharedPreferences _prefs;
+  final OutboxRepository _outbox;
   final OfflineCache _cache;
 
-  static const _kVaccinations = 'queue_vaccinations';
-  static const _kChildren = 'queue_children';
-  static const _kVisits = 'queue_visits';
+  // ── Local queue view ───────────────────────────────────────────────────────
+  int get pendingCount => _outbox.pendingCount;
 
-  // ── queue writers ──────────────────────────────────────────────────────────
-  Future<void> queueVaccination(Map<String, dynamic> item) =>
-      _append(_kVaccinations, item);
-
-  Future<void> queueChild(Map<String, dynamic> item) =>
-      _append(_kChildren, item);
-
-  Future<void> queueVisit(Map<String, dynamic> item) =>
-      _append(_kVisits, item);
-
-  Future<void> _append(String key, Map<String, dynamic> item) async {
-    final list = _read(key)..add(item);
-    await _prefs.setString(key, jsonEncode(list));
+  ({int vaccinations, int children, int visits}) get pendingBreakdown {
+    final byKind = _outbox.pendingByKind;
+    return (
+      vaccinations: byKind[OutboxKind.vaccination] ?? 0,
+      children: byKind[OutboxKind.child] ?? 0,
+      visits: byKind[OutboxKind.visit] ?? 0,
+    );
   }
 
-  List<Map<String, dynamic>> _read(String key) {
-    final raw = _prefs.getString(key);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      return (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-    } catch (_) {
-      return [];
-    }
+  /// The oldest thing still waiting, for telling the worker how far behind the
+  /// device is.
+  DateTime? get oldestPending {
+    final entries = _outbox.entries;
+    if (entries.isEmpty) return null;
+    return entries
+        .map((e) => e.queuedAt)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
   }
 
-  int get pendingCount =>
-      _read(_kVaccinations).length +
-      _read(_kChildren).length +
-      _read(_kVisits).length;
+  List<Map<String, dynamic>> get queuedChildren => _outbox.queuedChildren;
 
-  /// Per-type counts for the sync sheet — a worker should be able to see
-  /// exactly what is still sitting on the phone.
-  ({int vaccinations, int children, int visits}) get pendingBreakdown => (
-        vaccinations: _read(_kVaccinations).length,
-        children: _read(_kChildren).length,
-        visits: _read(_kVisits).length,
-      );
-
-  /// Children registered offline and not yet uploaded, newest first.
-  List<Map<String, dynamic>> get queuedChildren =>
-      _read(_kChildren).reversed.toList();
-
-  // ── server status ──────────────────────────────────────────────────────────
+  // ── Server status ──────────────────────────────────────────────────────────
   /// Never throws on a network failure. The pending count lives on this device,
   /// so it must stay visible precisely when the server cannot be reached —
   /// otherwise the app reports "0 waiting" at the moment work is piling up.
   Future<SyncStatus> status() async {
     try {
-      final resp = await _api.get('/sync/status');
+      final resp = await _api.get(ApiRoutes.syncStatus);
       final server = SyncStatus.fromJson(resp.data as Map<String, dynamic>);
       if (server.lastSync != null) {
         await _cache.write(
@@ -89,24 +66,24 @@ class SyncRepository {
     }
   }
 
-  /// Flush queued actions to the server. Clears the queue on success.
+  /// Flush the outbox. Clears it only once the server has confirmed receipt.
   Future<SyncResult> upload() async {
-    final vaccinations = _read(_kVaccinations);
-    final children = _read(_kChildren);
-    final visits = _read(_kVisits);
+    await _outbox.recordAttempt();
 
-    final resp = await _api.post('/sync/upload', data: {
-      'vaccinations': vaccinations,
-      'newChildren': children,
-      'visits': visits,
-    });
+    final body = {
+      for (final kind in OutboxKind.values)
+        kind.wireKey: _outbox.payloadsFor(kind),
+    };
 
-    await _prefs.remove(_kVaccinations);
-    await _prefs.remove(_kChildren);
-    await _prefs.remove(_kVisits);
+    final resp = await _api.post(ApiRoutes.syncUpload, data: body);
+    final result = SyncResult.fromJson(resp.data as Map<String, dynamic>);
+
+    // The queue is only dropped on a confirmed response. A thrown request
+    // leaves every entry in place for the next attempt.
+    await _outbox.clear();
     await _cache.write(
         OfflineCache.kLastSync, DateTime.now().toIso8601String());
 
-    return SyncResult.fromJson(resp.data as Map<String, dynamic>);
+    return result;
   }
 }

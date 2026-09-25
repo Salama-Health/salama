@@ -122,97 +122,136 @@ class _VisitsScreenState extends ConsumerState<VisitsScreen> {
               ref.invalidate(childrenProvider);
               await ref.read(childrenProvider.future);
             },
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppDimensions.screenPadding,
-                AppDimensions.spaceMD,
-                AppDimensions.screenPadding,
-                AppDimensions.spaceXXL,
-              ),
-              children: [
-                _PriorityVisitsHeader(
-                  tab: _tab,
-                  total: all.length,
-                  toVisit: toVisit,
-                  visited: visited,
-                  highPriority: highPriority,
-                  onTab: (i) => setState(() => _tab = i),
-                ),
-                const SizedBox(height: AppDimensions.spaceSM),
-                _RouteActions(onOpen: () => showRoutePlanSheet(context)),
-                const SizedBox(height: AppDimensions.spaceMD),
-                AppSearchField(
-                  controller: _search,
-                  hint: 'Search name, code, village or caregiver',
-                  onChanged: (v) => setState(() => _query = v),
-                ),
-                const SizedBox(height: AppDimensions.spaceMD),
-                Row(
-                  children: [
-                    const Icon(Icons.filter_list_rounded,
-                        size: 15, color: AppColors.textSecondary),
-                    const SizedBox(width: 5),
-                    Text('Filter by priority',
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w700,
-                        )),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                SizedBox(
-                  height: 30,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _priorityChips.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 6),
-                    itemBuilder: (context, i) {
-                      final chip = _priorityChips[i];
-                      final selected = _priority == chip.$1;
-                      return _FilterChip(
-                        label: chip.$2,
-                        band: chip.$1,
-                        selected: selected,
-                        onTap: () => setState(() => _priority = chip.$1),
-                      );
-                    },
+            // Slivers, not a ListView of a Column: a Column would build a card
+            // for every child in the caseload on every rebuild — including the
+            // hundreds off screen — and a filter keystroke would rebuild them
+            // all. The list below builds only the rows in view.
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppDimensions.screenPadding,
+                    AppDimensions.spaceMD,
+                    AppDimensions.screenPadding,
+                    0,
                   ),
-                ),
-                const SizedBox(height: AppDimensions.spaceMD),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${list.length} ${list.length == 1 ? "child" : "children"}',
-                        style: AppTextStyles.h3,
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      _PriorityVisitsHeader(
+                        tab: _tab,
+                        total: all.length,
+                        toVisit: toVisit,
+                        visited: visited,
+                        highPriority: highPriority,
+                        onTab: (i) => setState(() => _tab = i),
                       ),
-                    ),
-                    Text('Sorted by priority',
-                        style: AppTextStyles.captionMuted),
-                  ],
-                ),
-                const SizedBox(height: AppDimensions.spaceSM),
-                childrenAsync.when(
-                  loading: () => const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40),
-                    child: Center(child: CircularProgressIndicator()),
+                      const SizedBox(height: AppDimensions.spaceSM),
+                      _RouteActions(onOpen: () => showRoutePlanSheet(context)),
+                      const SizedBox(height: AppDimensions.spaceMD),
+                      AppSearchField(
+                        controller: _search,
+                        hint: 'Search name, code, village or caregiver',
+                        onChanged: (v) => setState(() => _query = v),
+                      ),
+                      const SizedBox(height: AppDimensions.spaceMD),
+                      Row(
+                        children: [
+                          const Icon(Icons.filter_list_rounded,
+                              size: 15, color: AppColors.textSecondary),
+                          const SizedBox(width: 5),
+                          Text('Filter by priority',
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w700,
+                              )),
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      SizedBox(
+                        height: 30,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _priorityChips.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 6),
+                          itemBuilder: (context, i) {
+                            final chip = _priorityChips[i];
+                            final selected = _priority == chip.$1;
+                            return _FilterChip(
+                              label: chip.$2,
+                              band: chip.$1,
+                              selected: selected,
+                              onTap: () => setState(() => _priority = chip.$1),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: AppDimensions.spaceMD),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${list.length} ${list.length == 1 ? "child" : "children"}',
+                              style: AppTextStyles.h3,
+                            ),
+                          ),
+                          Text(
+                            _query.trim().isEmpty
+                                ? 'Sorted by priority'
+                                : 'Best matches first',
+                            style: AppTextStyles.captionMuted,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppDimensions.spaceSM),
+                    ]),
                   ),
-                  error: (e, _) => _ErrorState(
-                      message: '$e',
-                      onRetry: () => ref.invalidate(childrenProvider)),
+                ),
+                // The caseload itself — built lazily, one row at a time.
+                childrenAsync.when(
+                  loading: () => const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+                  error: (e, _) => SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppDimensions.screenPadding),
+                      child: _ErrorState(
+                          message: '$e',
+                          onRetry: () => ref.invalidate(childrenProvider)),
+                    ),
+                  ),
                   data: (_) => list.isEmpty
-                      ? _EmptyState(searching: _query.trim().isNotEmpty)
-                      : Column(
-                          children: list
-                              .map((c) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: _ChildCard(
-                                      child: c,
-                                      onTap: () =>
-                                          showChildDetailSheet(context, c),
-                                    ),
-                                  ))
-                              .toList(),
+                      ? SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: AppDimensions.screenPadding),
+                            child: _EmptyState(
+                                searching: _query.trim().isNotEmpty),
+                          ),
+                        )
+                      : SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppDimensions.screenPadding,
+                            0,
+                            AppDimensions.screenPadding,
+                            AppDimensions.spaceXXL,
+                          ),
+                          sliver: SliverList.separated(
+                            itemCount: list.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, i) {
+                              final c = list[i];
+                              return _ChildCard(
+                                key: ValueKey(c.id),
+                                child: c,
+                                onTap: () => showChildDetailSheet(context, c),
+                              );
+                            },
+                          ),
                         ),
                 ),
               ],
@@ -434,7 +473,7 @@ class _FilterChip extends StatelessWidget {
 class _ChildCard extends StatelessWidget {
   final ChildModel child;
   final VoidCallback onTap;
-  const _ChildCard({required this.child, required this.onTap});
+  const _ChildCard({super.key, required this.child, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/id_gen.dart';
 import '../../../data/models/child_model.dart';
 import '../../../data/models/route_models.dart';
+import '../../../data/repositories/outbox_repository.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/data_providers.dart';
 import '../../widgets/common/app_button.dart';
@@ -17,9 +19,9 @@ import 'visits_screen.dart' show priorityHue;
 
 /// Walks the worker through an optimized route one stop at a time.
 ///
-/// Each outcome — visited or skipped — is queued locally and uploaded with the
-/// next sync, so a full day's round trip survives having no signal from the
-/// moment the worker leaves the facility.
+/// Each outcome — visited or skipped — posts straight away when there is signal
+/// and goes to the outbox when there is not, so a full day's round trip survives
+/// having no connection from the moment the worker leaves the facility.
 class RouteRunScreen extends ConsumerStatefulWidget {
   final OptimizedRoute route;
   const RouteRunScreen({super.key, required this.route});
@@ -53,16 +55,40 @@ class _RouteRunScreenState extends ConsumerState<RouteRunScreen> {
   }
 
   Future<void> _record(RouteStop stop, {required bool visited}) async {
-    await ref.read(syncRepositoryProvider).queueVisit({
+    final payload = <String, dynamic>{
       'clientUuid': IdGen.uuid(),
       'childId': stop.childId,
       'status': visited ? 'visited' : 'skipped',
       'visitedAt': DateTime.now().toUtc().toIso8601String(),
       'routeOrder': stop.order,
-    });
+    };
+
+    // Posts live when there is signal, queues when there is not. Either way the
+    // worker moves to the next stop — a route must never stall on the network.
+    try {
+      await ref.read(outboxRepositoryProvider).submit<void>(
+            kind: OutboxKind.visit,
+            payload: payload,
+            request: () => ref.read(visitsRepositoryProvider).record(payload),
+          );
+    } on ApiException catch (e) {
+      // A rejection is worth showing, but the stop is still done.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Visit not saved on the server: ${e.message}'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+
     ref.invalidate(syncStatusProvider);
+    ref.invalidate(childrenProvider);
     ref.invalidate(alertsProvider);
 
+    if (!mounted) return;
     setState(() {
       (visited ? _visited : _skipped).add(stop.childId);
       _index++;

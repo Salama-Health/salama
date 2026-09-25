@@ -38,16 +38,31 @@ class OfflineCache {
 
   // ── Raw access ─────────────────────────────────────────────────────────────
   Future<void> write(String key, Object? json) async {
+    _decoded.remove(key);
     await _prefs.setString('$_dataPrefix$key', jsonEncode(json));
     await _prefs.setInt(
         '$_stampPrefix$key', DateTime.now().millisecondsSinceEpoch);
   }
 
+  /// Decoded payloads, keyed by the exact raw string they came from.
+  ///
+  /// A caseload of several hundred children is a sizeable JSON document, and the
+  /// scanner, search and manual-entry paths all read it. Re-parsing per call
+  /// showed up as jank; this keeps the last decode and throws it away as soon as
+  /// the stored string changes, so it can never serve something stale.
+  final Map<String, ({String raw, dynamic value})> _decoded = {};
+
   dynamic read(String key) {
     final raw = _prefs.getString('$_dataPrefix$key');
     if (raw == null || raw.isEmpty) return null;
+
+    final memo = _decoded[key];
+    if (memo != null && memo.raw == raw) return memo.value;
+
     try {
-      return jsonDecode(raw);
+      final value = jsonDecode(raw);
+      _decoded[key] = (raw: raw, value: value);
+      return value;
     } catch (_) {
       return null;
     }
@@ -125,6 +140,7 @@ class OfflineCache {
   }
 
   Future<void> clearAll() async {
+    _decoded.clear();
     for (final k in _prefs.getKeys().toList()) {
       if (k.startsWith(_dataPrefix) || k.startsWith(_stampPrefix)) {
         await _prefs.remove(k);

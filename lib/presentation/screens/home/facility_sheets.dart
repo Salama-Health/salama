@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/models/facility_model.dart';
+import '../../providers/data_providers.dart';
 
 IconData hazardIcon(String hazard) {
   final h = hazard.toLowerCase();
@@ -112,12 +115,19 @@ void showFacilityDetailSheet(BuildContext context, FacilityModel f) {
   );
 }
 
-class _FacilityDetailSheet extends StatelessWidget {
-  final FacilityModel facility;
-  const _FacilityDetailSheet({required this.facility});
+class _FacilityDetailSheet extends ConsumerWidget {
+  final FacilityModel passedFacility;
+  const _FacilityDetailSheet({required FacilityModel facility})
+      : passedFacility = facility;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The CDI score and hazard window are forecasts that move. Re-fetch on open
+    // when there is an id to fetch by, and fall back to the copy from the list.
+    final facility = passedFacility.id.isEmpty
+        ? passedFacility
+        : ref.watch(facilityDetailProvider(passedFacility.id)).valueOrNull ??
+            passedFacility;
     final mq = MediaQuery.of(context);
     final risk = facility.risk;
     return Container(

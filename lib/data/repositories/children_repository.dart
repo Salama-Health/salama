@@ -1,4 +1,5 @@
 import '../../core/api/api_client.dart';
+import '../../core/api/api_routes.dart';
 import '../../core/storage/offline_cache.dart';
 import '../models/child_model.dart';
 
@@ -12,7 +13,7 @@ class ChildrenRepository {
   Future<List<ChildModel>> list({String? status}) {
     return _cache.readThrough<List<ChildModel>>(
       key: OfflineCache.kChildren,
-      fetchJson: () async => (await _api.get('/children',
+      fetchJson: () async => (await _api.get(ApiRoutes.children,
               query: status != null ? {'status': status} : null))
           .data,
       decode: (json) => (json as List)
@@ -22,7 +23,7 @@ class ChildrenRepository {
   }
 
   Future<ChildModel> detail(String id) async {
-    final resp = await _api.get('/children/$id');
+    final resp = await _api.get(ApiRoutes.child(id));
     return ChildModel.fromJson(resp.data as Map<String, dynamic>);
   }
 
@@ -30,7 +31,7 @@ class ChildrenRepository {
   /// no signal, so scanning a child in the field still pulls up their record.
   Future<ChildModel> lookupByQr(String qr) async {
     try {
-      final resp = await _api.get('/children/lookup', query: {'qr': qr});
+      final resp = await _api.get(ApiRoutes.childLookup, query: {'qr': qr});
       return ChildModel.fromJson(resp.data as Map<String, dynamic>);
     } catch (e) {
       final match = findCached(qr);
@@ -104,12 +105,12 @@ class ChildrenRepository {
   }
 
   Future<ChildModel> create(Map<String, dynamic> body) async {
-    final resp = await _api.post('/children', data: body);
+    final resp = await _api.post(ApiRoutes.children, data: body);
     return ChildModel.fromJson(resp.data as Map<String, dynamic>);
   }
 
   Future<ChildModel> update(String id, Map<String, dynamic> body) async {
-    final resp = await _api.patch('/children/$id', data: body);
+    final resp = await _api.patch(ApiRoutes.child(id), data: body);
     return ChildModel.fromJson(resp.data as Map<String, dynamic>);
   }
 }

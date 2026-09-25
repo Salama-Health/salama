@@ -1,4 +1,5 @@
 import '../../core/api/api_client.dart';
+import '../../core/api/api_routes.dart';
 import '../../core/storage/offline_cache.dart';
 import '../models/route_models.dart';
 
@@ -12,7 +13,7 @@ class RoutesRepository {
   Future<OptimizedRoute> optimized() {
     return _cache.readThrough<OptimizedRoute>(
       key: OfflineCache.kRoute,
-      fetchJson: () async => (await _api.get('/routes/optimized')).data,
+      fetchJson: () async => (await _api.get(ApiRoutes.optimizedRoute)).data,
       decode: (json) => OptimizedRoute.fromJson(json as Map<String, dynamic>),
     );
   }

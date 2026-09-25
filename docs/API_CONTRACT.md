@@ -179,20 +179,52 @@ Partial update, same field names. Currently unused by the UI but wired.
 ### GET `/vaccinations?childId=`
 → array of `history[]` objects (see above).
 
+This is what the medical-history timeline reads when it opens. Until it answers
+the app shows the `history` that came with the child, so a slow response degrades
+to slightly thinner history rather than an empty screen.
+
 ### POST `/vaccinations`
 ```json
 {
   "childId": "uuid",
   "vaccine": "Penta-2",
-  "dose": "2",
   "batchNumber": "B-2231",
+  "site": "Left arm",
+  "notes": "Caregiver reported mild fever after the last dose",
   "status": "given",
   "dateGiven": "2026-09-24T08:41:00Z",
   "clientUuid": "uuid"
 }
 ```
-→ the created record. `dose` and `batchNumber` are optional. `clientUuid` is the
-idempotency key, as above.
+→ the created record. `batchNumber`, `site` and `notes` are optional — `site` and
+`notes` are recorded by the dose sheet and were previously dropped on the floor.
+`clientUuid` is the idempotency key, as above.
+
+**The identical object** is what appears in `vaccinations[]` on `/sync/upload`, so
+one handler serves both paths.
+
+---
+
+## 3b. Visits *(new)*
+
+### POST `/visits`
+Sent as each stop of a route is completed. Previously a visit could only reach
+the server inside a sync batch, even with a live connection.
+
+```json
+{
+  "clientUuid": "uuid",
+  "childId": "uuid",
+  "status": "visited",
+  "visitedAt": "2026-09-24T08:41:00Z",
+  "routeOrder": 3
+}
+```
+
+- `status` is `visited` | `skipped`.
+- Same body as the entries in `visits[]` on `/sync/upload`; same idempotency key.
+- A rejection is shown to the worker but does not stop the route — the next stop
+  is always reachable.
 
 ---
 
@@ -227,7 +259,9 @@ idempotency key, as above.
 - `daysToWindow` `0` means the disruption is already active.
 
 ### GET `/facilities/{id}`
-Same object.
+Same object. Fetched when a facility's detail sheet opens, because the CDI score
+and hazard window are forecasts that move during the day. The copy from the list
+is shown until it answers.
 
 ---
 
@@ -390,5 +424,12 @@ If the backend is being built from scratch, this order unblocks the app fastest:
 4. `/sync/status`, `/sync/upload` — makes offline work real.
 5. `/facilities` — the climate-risk story on the home screen.
 6. `/children` POST — registration (the queue already carries it via sync).
-7. `/reports/*`, `/routes/optimized`, `/activity`.
-8. `/alerts`, `/auth/change-pin` — both have working fallbacks.
+7. `/vaccinations` GET, `/children/{id}`, `/facilities/{id}` — fuller detail on
+   open; each degrades to the copy the app already holds.
+8. `/visits` POST — live visit outcomes (the sync batch already carries them).
+9. `/reports/*`, `/routes/optimized`, `/activity`.
+10. `/alerts`, `/auth/change-pin` — both have working fallbacks.
+
+Every path the client calls is declared in one file,
+[`lib/core/api/api_routes.dart`](../lib/core/api/api_routes.dart) — check it
+against this document rather than grepping the repositories.

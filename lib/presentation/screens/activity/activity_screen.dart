@@ -158,14 +158,17 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                                   color: AppColors.borderLight,
                                   width: AppDimensions.borderNormal),
                             ),
-                            child: Column(
-                              children: [
-                                for (var i = 0; i < list.length; i++)
-                                  _ActivityRow(
-                                    item: list[i],
-                                    isLast: i == list.length - 1,
-                                  ),
-                              ],
+                            // The feed can run to hundreds of entries, so rows
+                            // are built as they scroll into view.
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: EdgeInsets.zero,
+                              itemCount: list.length,
+                              itemBuilder: (context, i) => _ActivityRow(
+                                item: list[i],
+                                isLast: i == list.length - 1,
+                              ),
                             ),
                           ),
                   ),

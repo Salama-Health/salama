@@ -9,11 +9,13 @@ import '../../data/repositories/alerts_repository.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/children_repository.dart';
 import '../../data/repositories/facilities_repository.dart';
+import '../../data/repositories/outbox_repository.dart';
 import '../../data/repositories/reports_repository.dart';
 import '../../data/repositories/routes_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/sync_repository.dart';
 import '../../data/repositories/vaccinations_repository.dart';
+import '../../data/repositories/visits_repository.dart';
 import 'auth_provider.dart';
 
 /// Overridden in main() once SharedPreferences is initialised.
@@ -75,10 +77,18 @@ final routesRepositoryProvider = Provider((ref) => RoutesRepository(
       ref.watch(offlineCacheProvider),
     ));
 
+/// Durable queue for writes made offline. Everything that writes goes through
+/// this, so nothing recorded in the field lives only in memory.
+final outboxRepositoryProvider =
+    Provider((ref) => OutboxRepository(ref.watch(sharedPrefsProvider)));
+
+final visitsRepositoryProvider =
+    Provider((ref) => VisitsRepository(ref.watch(apiClientProvider)));
+
 final syncRepositoryProvider = Provider(
   (ref) => SyncRepository(
     ref.watch(apiClientProvider),
-    ref.watch(sharedPrefsProvider),
+    ref.watch(outboxRepositoryProvider),
     ref.watch(offlineCacheProvider),
   ),
 );
